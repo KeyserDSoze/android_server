@@ -1,0 +1,20 @@
+# Blade Server Edition configuration
+# All features enabled by default.
+github: true
+azure: true
+dotnet: true
+cloudflare: true
+opencode: true
+openchamber: true
+ssh: true
+docker: true
+podman: true
+lxc: true
+llm: true
+tailscale: true
+rclone: true
+node: true
+python: true
+devtools: true
+aliases: true
+services: true

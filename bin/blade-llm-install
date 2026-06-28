@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+cd /opt
+if [ ! -d llama.cpp ]; then git clone https://github.com/ggml-org/llama.cpp.git; fi
+cd llama.cpp
+git pull --ff-only || true
+cmake -B build -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS
+cmake --build build -j"$(nproc 2>/dev/null || echo 2)"
+ln -sf /opt/llama.cpp/build/bin/llama-cli /usr/local/bin/llama-cli
+ln -sf /opt/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
+echo "llama.cpp installato. Metti modelli GGUF in /root/models."

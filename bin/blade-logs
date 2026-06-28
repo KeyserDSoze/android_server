@@ -1,0 +1,7 @@
+#!/bin/sh
+SERVICE="${1:-openchamber}"
+case "$SERVICE" in
+  openchamber) tail -n 200 -f /root/logs/openchamber.log ;;
+  cloudflared) tail -n 200 -f /root/logs/cloudflared.log ;;
+  *) echo "Uso: blade-logs openchamber|cloudflared"; exit 1 ;;
+esac

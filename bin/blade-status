@@ -1,0 +1,18 @@
+#!/bin/sh
+printf '\nBlade Server Status\n'
+printf '===================\n'
+printf 'Hostname: '; cat /etc/blade-server/hostname 2>/dev/null || echo 'non configurato'
+printf 'Tunnel:   '; cat /etc/blade-server/tunnel-name 2>/dev/null || echo 'non configurato'
+printf '\nServizi:\n'
+for s in sshd docker tailscale openchamber cloudflared; do
+  if [ -x "/etc/init.d/$s" ]; then rc-service "$s" status || true; fi
+done
+printf '\nTool:\n'
+for c in git gh az node npm python3 cloudflared opencode openchamber docker podman lxc-create rclone tailscale tmux; do
+  printf '%-14s ' "$c"
+  command -v "$c" >/dev/null 2>&1 && echo OK || echo MISSING
+done
+printf '\nSystem:\n'
+free -h || true
+df -h / || true
+ip -4 addr show 2>/dev/null | awk '/inet / {print $2, $NF}' || true

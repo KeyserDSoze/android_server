@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+apk update && apk upgrade
+if command -v npm >/dev/null 2>&1; then npm update -g || true; fi
+if command -v az-native >/dev/null 2>&1; then /opt/azcli/bin/pip install --upgrade azure-cli || true; fi
+if command -v gh >/dev/null 2>&1; then gh extension upgrade --all || true; fi
+echo "Aggiornamento completato."

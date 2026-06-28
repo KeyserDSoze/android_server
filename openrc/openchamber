@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+name="openchamber"
+description="OpenChamber UI"
+command="/usr/bin/tmux"
+command_args="new-session -d -s openchamber 'openchamber --host 127.0.0.1 --port 3210 --ui-password \"${OPENCHAMBER_PASSWORD:-change-me-now}\" >> /root/logs/openchamber.log 2>&1'"
+pidfile="/run/openchamber.pid"
+command_background=false
+
+start_pre() {
+  mkdir -p /root/logs
+  if tmux has-session -t openchamber 2>/dev/null; then
+    eend 0
+    return 1
+  fi
+}
+
+stop() {
+  tmux kill-session -t openchamber 2>/dev/null || true
+}
