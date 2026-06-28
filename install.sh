@@ -113,8 +113,18 @@ load_config_profile() {
 
   if [ $_openssl_rc -ne 0 ]; then
     rm -f "$_tmp"
-    warn "openssl error: $_openssl_err"
-    fail "Decryption failed for $(basename "$_chosen"). Check password and that the file was committed with .gitattributes."
+    printf '\n\033[1;31m-- Decryption error --\033[0m\n'
+    printf 'File    : %s\n' "$(basename "$_chosen")"
+    printf 'openssl : %s\n' "$_openssl_err"
+    printf '\nPossible causes:\n'
+    printf '  - Wrong password (check CONFIG_PASSWORD in your .conf file)\n'
+    printf '  - File corrupted by Git (commit .gitattributes first, re-encrypt)\n'
+    printf '  - openssl version mismatch (run: openssl version)\n'
+    printf '\nTest manually:\n'
+    printf '  openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \\\n'
+    printf '    -in %s -out /tmp/test.conf \\\n' "$_chosen"
+    printf '    -pass "pass:YOUR_PASSWORD" && head -3 /tmp/test.conf\n\n'
+    fail "Decryption failed — see details above."
   fi
 
   # Source the decrypted config; relax -eu temporarily for safe include
