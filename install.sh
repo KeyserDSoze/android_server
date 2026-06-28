@@ -314,38 +314,57 @@ if is_true opencode; then
   log "OpenCode"
   _ocode_ok=0
 
-  # 1. Try npm (may fail on Alpine/musl due to libc detection)
-  if command -v npm >/dev/null 2>&1; then
+  # Detect libc: Alpine/musl needs a specific musl binary
+  _oc_arch="$(uname -m)"
+  case "$_oc_arch" in
+    aarch64|arm64) _oc_arch="arm64" ;;
+    x86_64)        _oc_arch="x64"   ;;
+    *)             _oc_arch="x64"   ;;
+  esac
+
+  if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -q musl 2>/dev/null); then
+    # Alpine/musl: download musl-specific binary
+    printf '[opencode] Alpine/musl detected — downloading musl binary (%s)...\n' "$_oc_arch"
+    apk add --no-cache tar curl ca-certificates >/dev/null 2>&1 || true
+    _oc_url="https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz"
+    printf '[opencode] URL: %s\n' "$_oc_url"
+    if curl -fL "$_oc_url" -o /tmp/opencode.tar.gz 2>/dev/null \
+        && tar -xzf /tmp/opencode.tar.gz -C /tmp 2>/dev/null \
+        && install -m 755 /tmp/opencode /usr/local/bin/opencode; then
+      rm -f /tmp/opencode.tar.gz /tmp/opencode
+      printf 'opencode musl binary installed OK\n'
+      _ocode_ok=1
+    else
+      warn "musl binary download/extract failed. URL: $_oc_url"
+      rm -f /tmp/opencode.tar.gz /tmp/opencode
+    fi
+  fi
+
+  # Fallback: npm (works on glibc systems, often fails on musl)
+  if [ $_ocode_ok -eq 0 ] && command -v npm >/dev/null 2>&1; then
+    printf '[opencode] Trying npm...\n'
     npm install -g opencode 2>/dev/null && _ocode_ok=1 || \
     npm install -g opencode-ai 2>/dev/null && _ocode_ok=1 || true
   fi
 
-  # 2. Fallback: download binary from GitHub releases
+  # Fallback: official install script (handles its own detection)
   if [ $_ocode_ok -eq 0 ]; then
-    warn "npm install failed (common on Alpine/musl) — trying binary download..."
-    _oc_arch="$(uname -m)"
-    case "$_oc_arch" in
-      aarch64|arm64) _oc_arch="arm64" ;;
-      *)             _oc_arch="x64"   ;;
-    esac
-    _oc_url="https://github.com/sst/opencode/releases/latest/download/opencode-linux-${_oc_arch}"
-    curl -fsSL "$_oc_url" -o /usr/local/bin/opencode \
-      && chmod +x /usr/local/bin/opencode \
-      && printf 'opencode binary downloaded OK\n' && _ocode_ok=1 \
-      || warn "opencode binary download also failed. URL: $_oc_url"
+    printf '[opencode] Trying official install script...\n'
+    curl -fsSL https://opencode.ai/install | sh 2>/dev/null && _ocode_ok=1 || true
   fi
 
   if [ $_ocode_ok -eq 1 ] && command -v opencode >/dev/null 2>&1; then
+    printf 'opencode: %s\n' "$(opencode --version 2>/dev/null | head -1 || echo installed)"
     track_ok "opencode $(opencode --version 2>/dev/null | head -1 || echo installed)"
-    # Register service only if opencode is actually available
     if is_true services && [ -f "$BASE_DIR/openrc/opencode" ]; then
       install_service "$BASE_DIR/openrc/opencode"
       printf '  opencode service registered\n'
       track_ok "service: opencode (autostart)"
     fi
   else
-    warn "opencode installation failed. Install manually after setup."
-    track_fail "opencode: npm and binary download both failed"
+    warn "opencode installation failed. Install manually with:"
+    warn "  curl -fL https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz -o /tmp/oc.tar.gz && tar -xzf /tmp/oc.tar.gz -C /tmp && install -m755 /tmp/opencode /usr/local/bin/opencode"
+    track_fail "opencode: all install methods failed (arch: ${_oc_arch}, musl: yes)"
   fi
 
   ask_if_empty OPENCODE_UI_PASSWORD "OpenCode UI password (Enter to disable auth)"

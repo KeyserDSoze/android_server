@@ -12,14 +12,23 @@ printf 'Alpine upgraded.\n'
 log "npm global packages"
 if command -v npm >/dev/null 2>&1; then
   npm update -g || warn "npm global update failed."
-  # Update opencode and openchamber explicitly
-  for pkg in opencode-ai openchamber; do
-    if npm list -g "$pkg" >/dev/null 2>&1; then
-      npm install -g "$pkg"@latest && printf '%s updated\n' "$pkg" || warn "$pkg update failed."
-    fi
-  done
+  npm install -g @openchamber/web 2>/dev/null && printf 'openchamber updated\n' || true
 else
   printf 'npm not installed — skip.\n'
+fi
+
+log "OpenCode"
+_oc_arch="$(uname -m)"
+case "$_oc_arch" in aarch64|arm64) _oc_arch="arm64" ;; *) _oc_arch="x64" ;; esac
+if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -q musl 2>/dev/null); then
+  _oc_url="https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz"
+  curl -fL "$_oc_url" -o /tmp/opencode.tar.gz 2>/dev/null \
+    && tar -xzf /tmp/opencode.tar.gz -C /tmp 2>/dev/null \
+    && install -m 755 /tmp/opencode /usr/local/bin/opencode \
+    && printf 'opencode updated (musl binary)\n' || warn "opencode musl update failed."
+  rm -f /tmp/opencode.tar.gz /tmp/opencode
+else
+  npm install -g opencode 2>/dev/null || npm install -g opencode-ai 2>/dev/null || true
 fi
 
 log "Azure CLI"
