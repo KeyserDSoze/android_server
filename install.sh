@@ -152,6 +152,12 @@ ask_if_empty() {
   fi
 }
 
+# ── Installation tracking ─────────────────────────────────────────────────────────────────────
+_ok=""; _fail=""; _skip=""
+track_ok()   { _ok="${_ok}  OK   $*\n"; }
+track_fail() { _fail="${_fail}  FAIL $*\n"; }
+track_skip() { _skip="${_skip}  SKIP $*\n"; }
+
 need_root
 # openssl must be available before load_config_profile runs
 apk add --no-cache openssl >/dev/null 2>&1 || true
@@ -216,10 +222,12 @@ fi
 
 if is_true github; then
   log "GitHub CLI"
-  apk add --no-cache github-cli || warn "github-cli not available in Alpine repo. Install manually or use apk edge/community."
-  printf 'gh %s\n' "$(gh --version 2>/dev/null | head -1 || echo n/a)"
+  apk add --no-cache github-cli \
+    && track_ok "gh $(gh --version 2>/dev/null | head -1 || echo installed)" \
+    || { warn "github-cli not available in Alpine repo. Install manually or use apk edge/community."; track_fail "github-cli: not in apk repo"; }
 else
   printf '[skip] github disabled in aserv.yaml\n'
+  track_skip "github-cli"
 fi
 
 if is_true docker; then
@@ -228,22 +236,28 @@ if is_true docker; then
   rc-update add docker default >/dev/null 2>&1 || true
   rc-service docker start >/dev/null 2>&1 || true
   printf 'Docker: %s\n' "$(docker --version 2>/dev/null || echo n/a)"
+  track_ok "docker $(docker --version 2>/dev/null | head -1 || echo installed)"
 else
   printf '[skip] docker disabled in aserv.yaml\n'
+  track_skip "docker"
 fi
 
 if is_true podman; then
   log "Podman"
   apk add --no-cache podman fuse-overlayfs slirp4netns || warn "Podman not available in repo."
+  track_ok "podman"
 else
   printf '[skip] podman disabled in aserv.yaml\n'
+  track_skip "podman"
 fi
 
 if is_true lxc; then
   log "LXC"
   apk add --no-cache lxc lxc-templates || warn "LXC not available in repo."
+  track_ok "lxc"
 else
   printf '[skip] lxc disabled in aserv.yaml\n'
+  track_skip "lxc"
 fi
 
 if is_true cloudflare; then
@@ -298,10 +312,18 @@ fi
 
 if is_true opencode; then
   log "OpenCode"
+  # Try 'opencode' (SST package), fallback to 'opencode-ai'
+  _ocode_ok=0
   if command -v npm >/dev/null 2>&1; then
-    npm install -g opencode-ai && printf 'opencode installed OK\n' || warn "npm install of opencode-ai failed."
+    npm install -g opencode 2>/dev/null && _ocode_ok=1 || \
+    npm install -g opencode-ai 2>/dev/null && _ocode_ok=1 || true
+  fi
+  if [ $_ocode_ok -eq 1 ]; then
+    printf 'opencode installed OK\n'
+    track_ok "opencode $(opencode --version 2>/dev/null | head -1 || echo installed)"
   else
-    warn "npm not found — install node first."
+    warn "opencode npm install failed. Check package name or install manually."
+    track_fail "opencode: npm install failed (check package name)"
   fi
   ask_if_empty OPENCODE_UI_PASSWORD "OpenCode UI password (Enter to disable auth)"
   mkdir -p /etc/conf.d
@@ -313,14 +335,34 @@ CFG
   printf 'OpenCode conf.d written (port %s)\n' "${OPENCODE_PORT:-3000}"
 else
   printf '[skip] opencode disabled in aserv.yaml\n'
+  track_skip "opencode"
 fi
 
 if is_true openchamber; then
   log "OpenChamber"
-  if command -v npm >/dev/null 2>&1; then
-    npm install -g openchamber && printf 'openchamber installed OK\n' || warn "npm install of openchamber failed."
+  # OpenChamber requires Node.js 22+
+  _ocm_node="$(node -v 2>/dev/null | sed 's/v//;s/\..*//' || echo 0)"
+  if [ "${_ocm_node:-0}" -lt 22 ] 2>/dev/null; then
+    warn "OpenChamber requires Node.js 22+. Current: $(node -v 2>/dev/null || echo not installed)"
+    track_fail "openchamber: Node.js 22+ required (current: v${_ocm_node})"
   else
-    warn "npm not found — install node first."
+    _ocm_ok=0
+    if command -v npm >/dev/null 2>&1; then
+      npm install -g @openchamber/web 2>/dev/null \
+        && printf '@openchamber/web installed OK\n' && _ocm_ok=1 \
+        || warn "@openchamber/web npm install failed — trying official install script..."
+    fi
+    if [ $_ocm_ok -eq 0 ]; then
+      curl -fsSL https://raw.githubusercontent.com/openchamber/openchamber/main/scripts/install.sh \
+        | bash 2>/dev/null \
+        && printf 'openchamber installed via script OK\n' && _ocm_ok=1 \
+        || warn "OpenChamber curl installer also failed."
+    fi
+    if [ $_ocm_ok -eq 1 ]; then
+      track_ok "openchamber $(openchamber --version 2>/dev/null | head -1 || echo installed)"
+    else
+      track_fail "openchamber: all install methods failed"
+    fi
   fi
   ask_if_empty OPENCHAMBER_PASSWORD "OpenChamber UI password (Enter to disable auth)"
   mkdir -p /etc/conf.d
@@ -331,28 +373,37 @@ CFG
   printf 'OpenChamber conf.d written (port %s)\n' "${OPENCHAMBER_PORT:-3210}"
 else
   printf '[skip] openchamber disabled in aserv.yaml\n'
+  track_skip "openchamber"
 fi
 
 if is_true azure; then
   log "Azure CLI"
-  sh "$BASE_DIR/modules/azure.sh" && printf 'az: %s\n' "$(az version 2>/dev/null | head -1 || echo installed)" || warn "Native Azure CLI install failed. The az wrapper will fall back to Docker."
+  sh "$BASE_DIR/modules/azure.sh" \
+    && track_ok "azure-cli $(az version 2>/dev/null | grep '"azure-cli"' | sed 's/.*: "//;s/".*//' || echo installed)" \
+    || { warn "Native Azure CLI install failed. The az wrapper will fall back to Docker."; track_fail "azure-cli: native install failed (Docker fallback active)"; }
 else
   printf '[skip] azure disabled in aserv.yaml\n'
+  track_skip "azure-cli"
 fi
 
 if is_true dotnet; then
   log ".NET SDK"
-  sh "$BASE_DIR/modules/dotnet.sh" && printf 'dotnet: %s\n' "$(dotnet --version 2>/dev/null || echo installed)" || warn ".NET SDK not installed: check the log above."
+  sh "$BASE_DIR/modules/dotnet.sh" \
+    && track_ok "dotnet $(dotnet --version 2>/dev/null || echo installed)" \
+    || { warn ".NET SDK not installed: check the log above."; track_fail "dotnet: install failed"; }
 else
   printf '[skip] dotnet disabled in aserv.yaml\n'
+  track_skip "dotnet"
 fi
 
 if is_true llm; then
   log "LLM tools: llama.cpp prerequisites"
   apk add --no-cache git cmake make clang openblas-dev || true
   printf 'LLM prerequisites installed.\n'
+  track_ok "llm prerequisites (cmake, clang, openblas)"
 else
   printf '[skip] llm disabled in aserv.yaml\n'
+  track_skip "llm"
 fi
 
 log "Installing aserv-* commands"
@@ -368,17 +419,21 @@ if is_true services; then
   if [ -f "$BASE_DIR/openrc/openchamber" ]; then
     install_service "$BASE_DIR/openrc/openchamber"
     printf '  openchamber registered\n'
+    track_ok "service: openchamber (autostart)"
   fi
   if [ -f "$BASE_DIR/openrc/cloudflared" ]; then
     install_service "$BASE_DIR/openrc/cloudflared"
     printf '  cloudflared registered\n'
+    track_ok "service: cloudflared (autostart)"
   fi
   if is_true opencode && [ -f "$BASE_DIR/openrc/opencode" ]; then
     install_service "$BASE_DIR/openrc/opencode"
     printf '  opencode registered\n'
+    track_ok "service: opencode (autostart)"
   fi
 else
   printf '[skip] services disabled in aserv.yaml\n'
+  track_skip "OpenRC services"
 fi
 
 if is_true ssh; then
@@ -410,3 +465,27 @@ printf '%s\n' "Next steps:" \
   "  2) aserv-auth" \
   "  3) aserv-status" \
   "  4) Access OpenChamber at your configured domain or locally at port ${OPENCHAMBER_PORT}"
+
+# ────────────────────────────────────────────────────────────────
+printf '\n'
+printf '\033[1;37m%s\033[0m\n' '================================================'
+printf '\033[1;37m%s\033[0m\n' '          INSTALLATION SUMMARY'
+printf '\033[1;37m%s\033[0m\n' '================================================'
+
+if [ -n "$_ok" ]; then
+  printf '\n\033[1;32mSucceeded:\033[0m\n'
+  printf '%b' "$_ok"
+fi
+
+if [ -n "$_skip" ]; then
+  printf '\n\033[1;33mSkipped (disabled in aserv.yaml):\033[0m\n'
+  printf '%b' "$_skip"
+fi
+
+if [ -n "$_fail" ]; then
+  printf '\n\033[1;31mFailed:\033[0m\n'
+  printf '%b' "$_fail"
+  printf '\n\033[1;31mRun aserv-update or re-run install.sh to retry failed components.\033[0m\n'
+fi
+
+printf '\033[1;37m%s\033[0m\n' '================================================'
