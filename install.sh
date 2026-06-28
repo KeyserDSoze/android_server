@@ -456,17 +456,32 @@ for f in "$BASE_DIR"/bin/*; do
   fi
 done
 
-log "Registering OpenRC services"
+log "Registering and starting OpenRC services"
 if is_true services; then
   if [ -f "$BASE_DIR/openrc/openchamber" ]; then
     install_service "$BASE_DIR/openrc/openchamber"
-    printf '  openchamber registered\n'
-    track_ok "service: openchamber (autostart)"
+    if command -v openchamber >/dev/null 2>&1; then
+      rc-service openchamber restart \
+        && printf '  openchamber started OK (port %s)\n' "${OPENCHAMBER_PORT:-3210}" \
+        || warn "openchamber service failed to start — check: aserv-logs openchamber"
+      track_ok "service: openchamber started (port ${OPENCHAMBER_PORT:-3210})"
+    else
+      warn "openchamber binary not found — service registered for boot but NOT started now."
+      warn "Install first: npm install -g @openchamber/web"
+      track_fail "service: openchamber not started (binary missing)"
+    fi
   fi
   if [ -f "$BASE_DIR/openrc/cloudflared" ]; then
     install_service "$BASE_DIR/openrc/cloudflared"
-    printf '  cloudflared registered\n'
-    track_ok "service: cloudflared (autostart)"
+    if command -v cloudflared >/dev/null 2>&1; then
+      rc-service cloudflared restart \
+        && printf '  cloudflared started OK\n' \
+        || warn "cloudflared service failed to start — check: aserv-logs cloudflared"
+      track_ok "service: cloudflared started"
+    else
+      warn "cloudflared binary not found — service registered for boot but NOT started now."
+      track_fail "service: cloudflared not started (binary missing)"
+    fi
   fi
   # opencode service is registered inside the opencode block above (only if binary installed)
 else
