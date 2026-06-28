@@ -19,9 +19,20 @@ if [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
   printf '%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > /etc/aserv/cloudflare-token
   chmod 600 /etc/aserv/cloudflare-token
   rc-service cloudflared restart || true
-  log "Done."
-  printf '  Token saved to /etc/aserv/cloudflare-token\n'
-  printf '  cloudflared starts automatically at boot via OpenRC.\n'
+  log "Done — token saved, service restarted."
+  printf '\n  The tunnel ingress (SSH, HTTP, etc.) is managed in the Cloudflare dashboard:\n'
+  printf '  Zero Trust → Networks → Tunnels → your tunnel → Public Hostnames\n'
+  printf '\n  Recommended hostnames to add:\n'
+  if [ -n "${CLOUDFLARE_HOSTNAME:-}" ]; then
+    printf '    %-30s service: HTTP   url: localhost:%s\n' "$CLOUDFLARE_HOSTNAME" "${OPENCHAMBER_PORT:-3210}"
+  fi
+  if [ -n "${CLOUDFLARE_SSH_HOSTNAME:-}" ]; then
+    printf '    %-30s service: SSH    url: localhost:%s\n' "$CLOUDFLARE_SSH_HOSTNAME" "${SSH_PORT:-22}"
+    printf '\n  Client SSH config (~/.ssh/config on your PC):\n'
+    printf '    Host %s\n' "$CLOUDFLARE_SSH_HOSTNAME"
+    printf '        ProxyCommand cloudflared access ssh --hostname %%h\n'
+    printf '        User root\n'
+  fi
   exit 0
 fi
 # ─────────────────────────────────────────────────────────────────────────
@@ -48,6 +59,14 @@ else
 fi
 [ -n "$HOSTNAME" ] || fail "Hostname is required."
 
+# SSH hostname (optional)
+if [ -n "${CLOUDFLARE_SSH_HOSTNAME:-}" ]; then
+  SSH_HOST="$CLOUDFLARE_SSH_HOSTNAME"
+else
+  printf "SSH hostname (e.g. ssh.example.com, Enter to skip): "
+  read SSH_HOST
+fi
+
 CF_PORT="${OPENCHAMBER_PORT:-3210}"
 
 mkdir -p /root/.cloudflared /etc/aserv
@@ -59,21 +78,30 @@ cloudflared tunnel create "$TUNNEL" || true
 CRED="$(find /root/.cloudflared -name '*.json' | head -n 1)"
 [ -n "$CRED" ] || fail "Tunnel credentials not found after login."
 
-cat > /root/.cloudflared/config.yml <<CFG
-tunnel: $TUNNEL
-credentials-file: $CRED
+# Build ingress rules
+INGRESS="  - hostname: $HOSTNAME\n    service: http://127.0.0.1:${CF_PORT}"
+if [ -n "${SSH_HOST:-}" ]; then
+  INGRESS="$INGRESS\n  - hostname: $SSH_HOST\n    service: ssh://127.0.0.1:${SSH_PORT:-22}"
+fi
 
-ingress:
-  - hostname: $HOSTNAME
-    service: http://127.0.0.1:${CF_PORT}
-  - service: http_status:404
-CFG
+printf "tunnel: %s\ncredentials-file: %s\n\ningress:\n%b\n  - service: http_status:404\n" \
+  "$TUNNEL" "$CRED" "$INGRESS" > /root/.cloudflared/config.yml
 
 printf '%s\n' "$TUNNEL"   > /etc/aserv/tunnel-name
 printf '%s\n' "$HOSTNAME" > /etc/aserv/hostname
 cloudflared tunnel route dns "$TUNNEL" "$HOSTNAME" || true
+if [ -n "${SSH_HOST:-}" ]; then
+  cloudflared tunnel route dns "$TUNNEL" "$SSH_HOST" || true
+fi
 rc-service cloudflared restart || true
 
 log "Cloudflare configured"
-printf '  Tunnel  : %s\n'       "$TUNNEL"
-printf '  Hostname: https://%s\n' "$HOSTNAME"
+printf '  Tunnel  : %s\n'         "$TUNNEL"
+printf '  HTTP    : https://%s\n' "$HOSTNAME"
+if [ -n "${SSH_HOST:-}" ]; then
+  printf '  SSH     : %s\n' "$SSH_HOST"
+  printf '\n  Client SSH config (~/.ssh/config on your PC):\n'
+  printf '    Host %s\n' "$SSH_HOST"
+  printf '        ProxyCommand cloudflared access ssh --hostname %%h\n'
+  printf '        User root\n'
+fi
