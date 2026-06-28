@@ -158,15 +158,19 @@ apk add --no-cache openssl >/dev/null 2>&1 || true
 load_config_profile
 
 log "Blade Server bootstrap"
+printf 'Base dir : %s\n' "$BASE_DIR"
+printf 'Config   : %s\n' "$CONFIG_FILE"
 mkdir -p /root/projects /root/models /root/logs /root/scripts /root/backup /etc/aserv
 cp "$CONFIG_FILE" /etc/aserv/aserv.yaml
+printf 'Workspace directories created.\n'
 
 log "Updating Alpine packages"
-apk update
-apk upgrade
+apk update && printf 'Index updated.\n'
+apk upgrade && printf 'Packages upgraded.\n'
 
 log "Base packages"
 apk add --no-cache ca-certificates curl wget git openssh-client openssh-server tmux nano vim htop btop tree jq zip unzip rsync bash shadow sudo openrc util-linux coreutils grep sed gawk procps openssl
+printf 'Base packages installed.\n'
 
 log "Git configuration"
 ask_if_empty GIT_USER_NAME  "Git user name  (Enter to skip)"
@@ -177,21 +181,45 @@ if [ -n "$GIT_USER_EMAIL" ]; then git config --global user.email "$GIT_USER_EMAI
 if is_true devtools; then
   log "Dev tools"
   apk add --no-cache build-base clang cmake make pkgconf linux-headers openssl-dev zlib-dev libffi-dev sqlite-dev
+  printf 'Dev tools installed.\n'
+else
+  printf '[skip] devtools disabled in aserv.yaml\n'
 fi
 
 if is_true node; then
   log "Node.js + npm"
-  apk add --no-cache nodejs npm
+  # Try Node.js 22 LTS, then 20 LTS, then whatever Alpine has
+  apk add --no-cache nodejs npm || \
+  apk add --no-cache nodejs22 npm || \
+  apk add --no-cache nodejs20 npm || \
+  warn "Node.js installation failed."
+  NODE_VER="$(node -v 2>/dev/null || echo unknown)"
+  NPM_VER="$(npm -v 2>/dev/null || echo unknown)"
+  printf 'Node.js %s / npm %s\n' "$NODE_VER" "$NPM_VER"
+  # Warn if node is too old for opencode/openchamber
+  NODE_MAJOR="$(printf '%s' "$NODE_VER" | sed 's/v//;s/\..*//;s/unknown/0/')"
+  if [ "$NODE_MAJOR" -lt 20 ] 2>/dev/null; then
+    warn "Node.js $NODE_VER may be too old. opencode/openchamber require Node 20+."
+    warn "Consider upgrading Alpine or running: apk add nodejs --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community"
+  fi
+else
+  printf '[skip] node disabled in aserv.yaml\n'
 fi
 
 if is_true python; then
   log "Python"
   apk add --no-cache python3 py3-pip py3-virtualenv
+  printf 'Python %s\n' "$(python3 --version 2>/dev/null || echo n/a)"
+else
+  printf '[skip] python disabled in aserv.yaml\n'
 fi
 
 if is_true github; then
   log "GitHub CLI"
   apk add --no-cache github-cli || warn "github-cli not available in Alpine repo. Install manually or use apk edge/community."
+  printf 'gh %s\n' "$(gh --version 2>/dev/null | head -1 || echo n/a)"
+else
+  printf '[skip] github disabled in aserv.yaml\n'
 fi
 
 if is_true docker; then
@@ -199,27 +227,55 @@ if is_true docker; then
   apk add --no-cache docker docker-cli docker-compose || warn "Docker not installed. If Podroid already includes it, ignore this."
   rc-update add docker default >/dev/null 2>&1 || true
   rc-service docker start >/dev/null 2>&1 || true
+  printf 'Docker: %s\n' "$(docker --version 2>/dev/null || echo n/a)"
+else
+  printf '[skip] docker disabled in aserv.yaml\n'
 fi
 
 if is_true podman; then
   log "Podman"
   apk add --no-cache podman fuse-overlayfs slirp4netns || warn "Podman not available in repo."
+else
+  printf '[skip] podman disabled in aserv.yaml\n'
 fi
 
 if is_true lxc; then
   log "LXC"
   apk add --no-cache lxc lxc-templates || warn "LXC not available in repo."
+else
+  printf '[skip] lxc disabled in aserv.yaml\n'
 fi
 
 if is_true cloudflare; then
   log "Cloudflared"
-  apk add --no-cache cloudflared || warn "cloudflared not available via apk. Use aserv-setup-cloudflare for alternative install."
+  if ! apk add --no-cache cloudflared 2>/dev/null; then
+    warn "cloudflared not in apk — downloading binary from GitHub releases."
+    _cf_arch="$(uname -m)"
+    case "$_cf_arch" in
+      aarch64|arm64) _cf_arch="arm64" ;;
+      armv7*)        _cf_arch="arm"   ;;
+      *)             _cf_arch="amd64" ;;
+    esac
+    printf 'Architecture: %s -> cloudflared-linux-%s\n' "$(uname -m)" "$_cf_arch"
+    curl -fsSL \
+      "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${_cf_arch}" \
+      -o /usr/local/bin/cloudflared \
+      && chmod +x /usr/local/bin/cloudflared \
+      && printf 'cloudflared downloaded: %s\n' "$(cloudflared --version 2>/dev/null || echo ok)" \
+      || warn "cloudflared download failed. Try manually: https://github.com/cloudflare/cloudflared/releases"
+  else
+    printf 'cloudflared installed via apk: %s\n' "$(cloudflared --version 2>/dev/null || echo ok)"
+  fi
   if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
     mkdir -p /etc/aserv
     printf '%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > /etc/aserv/cloudflare-token
     chmod 600 /etc/aserv/cloudflare-token
-    log "Cloudflare tunnel token saved to /etc/aserv/cloudflare-token"
+    printf 'Cloudflare tunnel token saved to /etc/aserv/cloudflare-token\n'
+  else
+    printf 'No tunnel token set — run aserv-setup-cloudflare after install.\n'
   fi
+else
+  printf '[skip] cloudflare disabled in aserv.yaml\n'
 fi
 
 if is_true tailscale; then
@@ -229,17 +285,23 @@ if is_true tailscale; then
   if [ -n "$TAILSCALE_AUTH_KEY" ]; then
     tailscale up --authkey="$TAILSCALE_AUTH_KEY" || warn "Tailscale headless join failed. Run 'tailscale up' manually."
   fi
+else
+  printf '[skip] tailscale disabled in aserv.yaml\n'
 fi
 
 if is_true rclone; then
   log "Rclone"
   apk add --no-cache rclone || warn "rclone not available via apk."
+else
+  printf '[skip] rclone disabled in aserv.yaml\n'
 fi
 
 if is_true opencode; then
   log "OpenCode"
   if command -v npm >/dev/null 2>&1; then
-    npm install -g opencode-ai || warn "npm install of opencode-ai failed."
+    npm install -g opencode-ai && printf 'opencode installed OK\n' || warn "npm install of opencode-ai failed."
+  else
+    warn "npm not found — install node first."
   fi
   ask_if_empty OPENCODE_UI_PASSWORD "OpenCode UI password (Enter to disable auth)"
   mkdir -p /etc/conf.d
@@ -248,12 +310,17 @@ OPENCODE_UI_PASSWORD="$OPENCODE_UI_PASSWORD"
 OPENCODE_PORT="${OPENCODE_PORT:-3000}"
 OPENCODE_HOSTNAME="${OPENCODE_HOSTNAME:-0.0.0.0}"
 CFG
+  printf 'OpenCode conf.d written (port %s)\n' "${OPENCODE_PORT:-3000}"
+else
+  printf '[skip] opencode disabled in aserv.yaml\n'
 fi
 
 if is_true openchamber; then
   log "OpenChamber"
   if command -v npm >/dev/null 2>&1; then
-    npm install -g openchamber || warn "npm install of openchamber failed."
+    npm install -g openchamber && printf 'openchamber installed OK\n' || warn "npm install of openchamber failed."
+  else
+    warn "npm not found — install node first."
   fi
   ask_if_empty OPENCHAMBER_PASSWORD "OpenChamber UI password (Enter to disable auth)"
   mkdir -p /etc/conf.d
@@ -261,33 +328,57 @@ if is_true openchamber; then
 OPENCHAMBER_PASSWORD="$OPENCHAMBER_PASSWORD"
 OPENCHAMBER_PORT="${OPENCHAMBER_PORT:-3210}"
 CFG
+  printf 'OpenChamber conf.d written (port %s)\n' "${OPENCHAMBER_PORT:-3210}"
+else
+  printf '[skip] openchamber disabled in aserv.yaml\n'
 fi
 
 if is_true azure; then
   log "Azure CLI"
-  sh "$BASE_DIR/modules/azure.sh" || warn "Native Azure CLI install failed. The az wrapper will fall back to Docker."
+  sh "$BASE_DIR/modules/azure.sh" && printf 'az: %s\n' "$(az version 2>/dev/null | head -1 || echo installed)" || warn "Native Azure CLI install failed. The az wrapper will fall back to Docker."
+else
+  printf '[skip] azure disabled in aserv.yaml\n'
 fi
 
 if is_true dotnet; then
   log ".NET SDK"
-  sh "$BASE_DIR/modules/dotnet.sh" || warn ".NET SDK not installed: check the log above."
+  sh "$BASE_DIR/modules/dotnet.sh" && printf 'dotnet: %s\n' "$(dotnet --version 2>/dev/null || echo installed)" || warn ".NET SDK not installed: check the log above."
+else
+  printf '[skip] dotnet disabled in aserv.yaml\n'
 fi
 
 if is_true llm; then
   log "LLM tools: llama.cpp prerequisites"
   apk add --no-cache git cmake make clang openblas-dev || true
+  printf 'LLM prerequisites installed.\n'
+else
+  printf '[skip] llm disabled in aserv.yaml\n'
 fi
 
 log "Installing aserv-* commands"
-for f in "$BASE_DIR"/bin/*; do [ -f "$f" ] && copy_bin "$f"; done
+for f in "$BASE_DIR"/bin/*; do
+  if [ -f "$f" ]; then
+    copy_bin "$f"
+    printf '  installed: %s\n' "$(basename "$f")"
+  fi
+done
 
 log "Registering OpenRC services"
 if is_true services; then
-  [ -f "$BASE_DIR/openrc/openchamber" ] && install_service "$BASE_DIR/openrc/openchamber"
-  [ -f "$BASE_DIR/openrc/cloudflared" ] && install_service "$BASE_DIR/openrc/cloudflared"
-  if is_true opencode; then
-    [ -f "$BASE_DIR/openrc/opencode" ] && install_service "$BASE_DIR/openrc/opencode"
+  if [ -f "$BASE_DIR/openrc/openchamber" ]; then
+    install_service "$BASE_DIR/openrc/openchamber"
+    printf '  openchamber registered\n'
   fi
+  if [ -f "$BASE_DIR/openrc/cloudflared" ]; then
+    install_service "$BASE_DIR/openrc/cloudflared"
+    printf '  cloudflared registered\n'
+  fi
+  if is_true opencode && [ -f "$BASE_DIR/openrc/opencode" ]; then
+    install_service "$BASE_DIR/openrc/opencode"
+    printf '  opencode registered\n'
+  fi
+else
+  printf '[skip] services disabled in aserv.yaml\n'
 fi
 
 if is_true ssh; then
