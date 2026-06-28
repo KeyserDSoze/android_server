@@ -96,12 +96,23 @@ load_config_profile() {
   stty echo  2>/dev/null || true
   printf '\n'
 
+  # Write passphrase to a temp file to avoid shell quoting issues with
+  # special characters (e.g. @ $ ! in passwords)
+  _passfile="$(mktemp /tmp/aserv-pass-XXXXXX)"
+  chmod 600 "$_passfile"
+  printf '%s' "$_pass" > "$_passfile"
+
   _tmp="$(mktemp /tmp/aserv-cfg-XXXXXX)"
-  if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+  _openssl_err="$(openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
       -in "$_chosen" -out "$_tmp" \
-      -pass "pass:${_pass}" 2>/dev/null; then
+      -pass "file:$_passfile" 2>&1)"
+  _openssl_rc=$?
+  rm -f "$_passfile"
+
+  if [ $_openssl_rc -ne 0 ]; then
     rm -f "$_tmp"
-    fail "Decryption failed. Wrong password or corrupted file: $(basename "$_chosen")"
+    warn "openssl error: $_openssl_err"
+    fail "Decryption failed for $(basename "$_chosen"). Check password and that the file was committed with .gitattributes."
   fi
 
   # Source the decrypted config; relax -eu temporarily for safe include
