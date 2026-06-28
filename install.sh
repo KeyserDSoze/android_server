@@ -54,12 +54,13 @@ TAILSCALE_AUTH_KEY=""
 load_config_profile() {
   _cdir="$BASE_DIR/config"
   _list=""
+  printf '\n[config] Looking for encrypted profiles in %s ...\n' "$_cdir"
   if [ -d "$_cdir" ]; then
     for _f in "$_cdir"/*.enc; do
       [ -f "$_f" ] && _list="$_list $_f"
     done
   fi
-  _list="${_list# }"  # trim leading space
+  _list="${_list# }"
 
   if [ -z "$_list" ]; then
     warn "No encrypted config profiles found in config/. All secrets will be entered interactively."
@@ -77,7 +78,7 @@ load_config_profile() {
   printf '\nSelect profile [0]: '
   read _choice
   _choice="${_choice:-0}"
-  [ "$_choice" = "0" ] && return 0
+  [ "$_choice" = "0" ] && { printf '[config] Skipped.\n'; return 0; }
 
   _chosen=""
   _i=0
@@ -90,16 +91,15 @@ load_config_profile() {
     return 0
   fi
 
-  printf 'Decryption password for %s: ' "$(basename "$_chosen")"
+  printf '[config] Selected: %s\n' "$(basename "$_chosen")"
+  printf 'Decryption password: '
   stty -echo 2>/dev/null || true
   read _pass
   stty echo  2>/dev/null || true
   printf '\n'
-  # Strip \r sent by some Android terminals when pressing Enter
   _pass="$(printf '%s' "$_pass" | tr -d '\r')"
+  printf '[config] Password read (%d chars). Decrypting...\n' "$(printf '%s' "$_pass" | wc -c)"
 
-  # Write passphrase to a temp file to avoid shell quoting issues with
-  # special characters (e.g. @ $ ! in passwords)
   _passfile="$(mktemp /tmp/aserv-pass-XXXXXX)"
   chmod 600 "$_passfile"
   printf '%s' "$_pass" > "$_passfile"
@@ -134,7 +134,11 @@ load_config_profile() {
   set -eu
   rm -f "$_tmp"
 
-  log "Config profile loaded: $(basename "$_chosen" .enc)"
+  printf '\033[1;32m[config] Profile loaded successfully: %s\033[0m\n' "$(basename "$_chosen" .enc)"
+  printf '[config] Git: %s <%s>\n' "$GIT_USER_NAME" "$GIT_USER_EMAIL"
+  if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then printf '[config] Cloudflare token: set\n'; fi
+  if [ -n "$OPENCODE_UI_PASSWORD" ];    then printf '[config] OpenCode password: set\n'; fi
+  if [ -n "$OPENCHAMBER_PASSWORD" ];    then printf '[config] OpenChamber password: set\n'; fi
 }
 
 # Prompt for a value if the named variable is currently empty.
