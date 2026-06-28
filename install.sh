@@ -105,10 +105,10 @@ load_config_profile() {
   printf '%s' "$_pass" > "$_passfile"
 
   _tmp="$(mktemp /tmp/aserv-cfg-XXXXXX)"
+  _openssl_rc=0
   _openssl_err="$(openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
       -in "$_chosen" -out "$_tmp" \
-      -pass "file:$_passfile" 2>&1)"
-  _openssl_rc=$?
+      -pass "file:$_passfile" 2>&1)" || _openssl_rc=$?
   rm -f "$_passfile"
 
   if [ $_openssl_rc -ne 0 ]; then
