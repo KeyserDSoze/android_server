@@ -1,0 +1,2 @@
+# Encrypted config profiles — treat as binary to prevent CRLF corruption
+config/*.enc binary
