@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+echo "GitHub auth"
+if command -v gh >/dev/null 2>&1; then
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    printf '%s' "$GITHUB_TOKEN" | gh auth login --with-token \
+      && echo "GitHub: authenticated with pre-loaded token." || true
+  else
+    gh auth login || true
+  fi
+else
+  echo "gh not installed"
+fi
+
+echo "Azure auth"
+if command -v az >/dev/null 2>&1; then
+  az login || true
+  if [ -n "${AZURE_SUBSCRIPTION_ID:-}" ]; then
+    az account set --subscription "$AZURE_SUBSCRIPTION_ID" \
+      && echo "Azure: subscription set to $AZURE_SUBSCRIPTION_ID" || true
+  fi
+else
+  echo "az not installed"
+fi
+
+echo "OpenCode: run 'opencode' and use /connect to configure your AI provider."

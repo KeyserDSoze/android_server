@@ -1,13 +1,13 @@
 #!/bin/sh
-printf '\nBlade Server Status\n'
-printf '===================\n'
-printf 'Hostname: '; cat /etc/blade-server/hostname 2>/dev/null || echo 'non configurato'
-printf 'Tunnel:   '; cat /etc/blade-server/tunnel-name 2>/dev/null || echo 'non configurato'
-printf '\nServizi:\n'
+printf '\nAndroid Server Status\n'
+printf '=======================\n'
+printf 'Hostname: '; cat /etc/aserv/hostname 2>/dev/null || echo 'not configured'
+printf 'Tunnel:   '; cat /etc/aserv/tunnel-name 2>/dev/null || echo 'not configured'
+printf '\nServices:\n'
 for s in sshd docker tailscale openchamber cloudflared; do
   if [ -x "/etc/init.d/$s" ]; then rc-service "$s" status || true; fi
 done
-printf '\nTool:\n'
+printf '\nTools:\n'
 for c in git gh az node npm python3 cloudflared opencode openchamber docker podman lxc-create rclone tailscale tmux; do
   printf '%-14s ' "$c"
   command -v "$c" >/dev/null 2>&1 && echo OK || echo MISSING

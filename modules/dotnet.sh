@@ -20,9 +20,9 @@ install_apk_sdk() {
 }
 
 if install_apk_sdk; then
-  log "dotnet installato via apk"
+  log "dotnet installed via apk"
 else
-  warn "Pacchetto dotnet*-sdk non disponibile via apk; uso dotnet-install.sh"
+  warn "dotnet*-sdk package not available via apk; falling back to dotnet-install.sh"
   mkdir -p /opt/dotnet
   curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
   chmod +x /tmp/dotnet-install.sh
@@ -45,4 +45,4 @@ export DOTNET_ROOT=/opt/dotnet
 export PATH="$PATH:/opt/dotnet:/root/.dotnet/tools"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
-dotnet --info || warn "dotnet installato ma dotnet --info non è riuscito in questa shell. Riapri la shell e riprova."
+dotnet --info || warn "dotnet installed but 'dotnet --info' failed in this shell. Reopen the shell and try again."

@@ -2,4 +2,4 @@
 for s in openchamber cloudflared sshd docker tailscale; do
   [ -x "/etc/init.d/$s" ] && rc-service "$s" restart || true
 done
-blade-status
+aserv-status

@@ -1,16 +1,25 @@
 #!/sbin/openrc-run
 name="cloudflared"
 description="Cloudflare Tunnel"
-command="/usr/bin/tmux"
-command_args="new-session -d -s cloudflared 'cloudflared tunnel --config /root/.cloudflared/config.yml run >> /root/logs/cloudflared.log 2>&1'"
 command_background=false
 
 start_pre() {
   mkdir -p /root/logs
-  [ -f /root/.cloudflared/config.yml ] || { eerror "Config mancante: esegui blade-setup-cloudflare"; return 1; }
   if tmux has-session -t cloudflared 2>/dev/null; then
     eend 0
     return 1
+  fi
+}
+
+start() {
+  if [ -f /etc/aserv/cloudflare-token ]; then
+    _token="$(cat /etc/aserv/cloudflare-token)"
+    tmux new-session -d -s cloudflared \
+      "cloudflared tunnel run --token $_token >> /root/logs/cloudflared.log 2>&1"
+  else
+    [ -f /root/.cloudflared/config.yml ] || { eerror "Config missing: run aserv-setup-cloudflare"; return 1; }
+    tmux new-session -d -s cloudflared \
+      "cloudflared tunnel --config /root/.cloudflared/config.yml run >> /root/logs/cloudflared.log 2>&1"
   fi
 }
 

@@ -1,0 +1,79 @@
+#!/bin/sh
+# aserv-setup-cloudflare — Create and configure a Cloudflare Tunnel
+#
+# Values are pre-filled from env vars if a config profile was loaded
+# during install.sh, otherwise they are prompted interactively.
+set -eu
+
+log()  { printf '\n\033[1;32m== %s ==\033[0m\n' "$*"; }
+fail() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# ── Token-based flow (dashboard-managed tunnel) ───────────────────────────
+# When CLOUDFLARE_TUNNEL_TOKEN is set (from config profile or env), the tunnel
+# is already created in the Cloudflare dashboard. No login or credentials
+# file is needed — cloudflared just runs with: tunnel run --token <token>
+if [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
+  log "Configuring Cloudflare Tunnel with dashboard token"
+  command -v cloudflared >/dev/null 2>&1 || fail "cloudflared not found. Try: apk add cloudflared"
+  mkdir -p /etc/aserv
+  printf '%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > /etc/aserv/cloudflare-token
+  chmod 600 /etc/aserv/cloudflare-token
+  rc-service cloudflared restart || true
+  log "Done."
+  printf '  Token saved to /etc/aserv/cloudflare-token\n'
+  printf '  cloudflared starts automatically at boot via OpenRC.\n'
+  exit 0
+fi
+# ─────────────────────────────────────────────────────────────────────────
+
+# Tunnel name
+if [ -n "${CLOUDFLARE_TUNNEL_NAME:-}" ]; then
+  TUNNEL="$CLOUDFLARE_TUNNEL_NAME"
+  printf 'Cloudflare tunnel name [%s]: ' "$TUNNEL"
+  read _in; [ -n "$_in" ] && TUNNEL="$_in"
+else
+  printf "Cloudflare tunnel name [aserv-tunnel]: "
+  read TUNNEL
+  TUNNEL="${TUNNEL:-aserv-tunnel}"
+fi
+
+# Public hostname
+if [ -n "${CLOUDFLARE_HOSTNAME:-}" ]; then
+  HOSTNAME="$CLOUDFLARE_HOSTNAME"
+  printf 'Public hostname [%s]: ' "$HOSTNAME"
+  read _in; [ -n "$_in" ] && HOSTNAME="$_in"
+else
+  printf "Public hostname (e.g. chamber.example.com): "
+  read HOSTNAME
+fi
+[ -n "$HOSTNAME" ] || fail "Hostname is required."
+
+CF_PORT="${OPENCHAMBER_PORT:-3210}"
+
+mkdir -p /root/.cloudflared /etc/aserv
+
+command -v cloudflared >/dev/null 2>&1 || fail "cloudflared not found. Try: apk add cloudflared"
+
+cloudflared tunnel login
+cloudflared tunnel create "$TUNNEL" || true
+CRED="$(find /root/.cloudflared -name '*.json' | head -n 1)"
+[ -n "$CRED" ] || fail "Tunnel credentials not found after login."
+
+cat > /root/.cloudflared/config.yml <<CFG
+tunnel: $TUNNEL
+credentials-file: $CRED
+
+ingress:
+  - hostname: $HOSTNAME
+    service: http://127.0.0.1:${CF_PORT}
+  - service: http_status:404
+CFG
+
+printf '%s\n' "$TUNNEL"   > /etc/aserv/tunnel-name
+printf '%s\n' "$HOSTNAME" > /etc/aserv/hostname
+cloudflared tunnel route dns "$TUNNEL" "$HOSTNAME" || true
+rc-service cloudflared restart || true
+
+log "Cloudflare configured"
+printf '  Tunnel  : %s\n'       "$TUNNEL"
+printf '  Hostname: https://%s\n' "$HOSTNAME"

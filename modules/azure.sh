@@ -20,7 +20,7 @@ if command -v docker >/dev/null 2>&1; then
     -v "$PWD:/work" -w /work \
     mcr.microsoft.com/azure-cli az "$@"
 fi
-echo "Azure CLI non disponibile. Installa azure-cli nativo oppure abilita Docker in Podroid." >&2
+echo "Azure CLI not available. Install azure-cli natively or enable Docker in Podroid." >&2
 exit 1
 AZEOF
 chmod +x /usr/local/bin/az
