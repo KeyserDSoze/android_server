@@ -95,6 +95,8 @@ load_config_profile() {
   read _pass
   stty echo  2>/dev/null || true
   printf '\n'
+  # Strip \r sent by some Android terminals when pressing Enter
+  _pass="$(printf '%s' "$_pass" | tr -d '\r')"
 
   # Write passphrase to a temp file to avoid shell quoting issues with
   # special characters (e.g. @ $ ! in passwords)
