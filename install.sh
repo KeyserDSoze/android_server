@@ -153,6 +153,8 @@ ask_if_empty() {
 }
 
 need_root
+# openssl must be available before load_config_profile runs
+apk add --no-cache openssl >/dev/null 2>&1 || true
 load_config_profile
 
 log "Blade Server bootstrap"
