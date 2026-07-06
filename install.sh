@@ -82,6 +82,7 @@ OPENCODE_UI_PASSWORD=""
 OPENCODE_PORT="3000"
 OPENCODE_HOSTNAME="0.0.0.0"
 TAILSCALE_AUTH_KEY=""
+REINSTALL_CLOUDFLARE=0  # set by prompt below
 
 # Load and decrypt a config profile from config/*.enc
 load_config_profile() {
@@ -218,7 +219,22 @@ else
 fi
 load_config_profile
 
-log "Server bootstrap ($OS_ID)"
+# ── Interactive setup questions ────────────────────────────────────────────────────────
+if is_true cloudflare && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+  printf '\n'
+  printf '\033[1;33m  WARNING: Reinstalling Cloudflare will KILL the running tunnel.\033[0m\n'
+  printf '  If you are connected via SSH through Cloudflare you will be DISCONNECTED.\n'
+  printf '\n  Reinstall Cloudflare tunnel? [y/N]: '
+  read _cf_ans
+  _cf_ans="$(printf '%s' "${_cf_ans:-N}" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+  if [ "$_cf_ans" = "y" ] || [ "$_cf_ans" = "yes" ]; then
+    REINSTALL_CLOUDFLARE=1
+    printf '  Cloudflare tunnel will be reinstalled.\n'
+  else
+    REINSTALL_CLOUDFLARE=0
+    printf '  Cloudflare tunnel will be kept as-is.\n'
+  fi
+fi
 printf 'Base dir : %s\n' "$BASE_DIR"
 printf 'Config   : %s\n' "$CONFIG_FILE"
 mkdir -p /root/projects /root/models /root/logs /root/scripts /root/backup /etc/aserv
@@ -382,14 +398,19 @@ if is_true cloudflare; then
       && printf 'cloudflared installed via apt\n' \
       || warn "cloudflared apt install failed."
     if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
-      # Stop any running cloudflared processes before reinstalling
-      pkill -f cloudflared 2>/dev/null || true
-      sleep 1
-      cloudflared service uninstall 2>/dev/null || true
-      cloudflared service install "$CLOUDFLARE_TUNNEL_TOKEN" \
-        && printf 'cloudflared systemd service installed\n' \
-        && track_ok "service: cloudflared started (systemd)" \
-        || warn "cloudflared service install failed."
+      if [ "$REINSTALL_CLOUDFLARE" = "1" ]; then
+        # Stop any running cloudflared processes before reinstalling
+        pkill -f cloudflared 2>/dev/null || true
+        sleep 1
+        cloudflared service uninstall 2>/dev/null || true
+        cloudflared service install "$CLOUDFLARE_TUNNEL_TOKEN" \
+          && printf 'cloudflared systemd service installed\n' \
+          && track_ok "service: cloudflared started (systemd)" \
+          || warn "cloudflared service install failed."
+      else
+        printf 'Cloudflare tunnel reinstall skipped (keeping existing service).\n'
+        track_ok "service: cloudflared (kept, not reinstalled)"
+      fi
     fi
   else
     if ! apk add --no-cache cloudflared 2>/dev/null; then
