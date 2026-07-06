@@ -375,6 +375,9 @@ if is_true cloudflare; then
       && printf 'cloudflared installed via apt\n' \
       || warn "cloudflared apt install failed."
     if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+      # Stop any running cloudflared processes before reinstalling
+      pkill -f cloudflared 2>/dev/null || true
+      sleep 1
       cloudflared service uninstall 2>/dev/null || true
       cloudflared service install "$CLOUDFLARE_TUNNEL_TOKEN" \
         && printf 'cloudflared systemd service installed\n' \
