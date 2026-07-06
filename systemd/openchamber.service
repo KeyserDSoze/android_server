@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenChamber UI
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/openchamber
+ExecStart=/usr/local/bin/openchamber --ui-password ${OPENCHAMBER_PASSWORD} --port ${OPENCHAMBER_PORT}
+Restart=always
+RestartSec=5
+StandardOutput=append:/root/logs/openchamber.log
+StandardError=append:/root/logs/openchamber.log
+
+[Install]
+WantedBy=multi-user.target

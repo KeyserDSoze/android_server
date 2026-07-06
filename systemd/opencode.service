@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenCode AI Server
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/opencode
+ExecStart=/usr/local/bin/opencode serve --ui-password ${OPENCODE_UI_PASSWORD} --hostname ${OPENCODE_HOSTNAME} --port ${OPENCODE_PORT}
+Restart=always
+RestartSec=5
+StandardOutput=append:/root/logs/opencode.log
+StandardError=append:/root/logs/opencode.log
+
+[Install]
+WantedBy=multi-user.target

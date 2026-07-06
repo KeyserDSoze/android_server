@@ -17,7 +17,7 @@ is_true() {
 
 need_root() {
   if [ "$(id -u)" != "0" ]; then
-    fail "Run this script inside Podroid/Alpine as root."
+    fail "Run this script as root."
   fi
 }
 
@@ -26,10 +26,34 @@ copy_bin() {
   install -m 0755 "$src" "$dst"
 }
 
+# OS-aware service install
 install_service() {
-  src="$1"; dst="/etc/init.d/$(basename "$src")"
-  install -m 0755 "$src" "$dst"
-  rc-update add "$(basename "$src")" default >/dev/null 2>&1 || true
+  src="$1"
+  name="$(basename "$src")"
+  if [ "$OS_ID" = "debian" ]; then
+    # Strip .service suffix if present
+    svc_name="$(printf '%s' "$name" | sed 's/\.service$//')"
+    svc_src="$BASE_DIR/systemd/${svc_name}.service"
+    if [ -f "$svc_src" ]; then
+      cp "$svc_src" "/etc/systemd/system/${svc_name}.service"
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      systemctl enable "$svc_name" >/dev/null 2>&1 || true
+    else
+      warn "No systemd service file for $svc_name (expected: systemd/${svc_name}.service)"
+    fi
+  else
+    dst="/etc/init.d/$name"
+    install -m 0755 "$src" "$dst"
+    rc-update add "$name" default >/dev/null 2>&1 || true
+  fi
+}
+
+# OS-aware service start/stop
+svc_start() {
+  if [ "$OS_ID" = "debian" ]; then systemctl restart "$1"; else rc-service "$1" restart; fi
+}
+svc_stop() {
+  if [ "$OS_ID" = "debian" ]; then systemctl stop "$1" 2>/dev/null || true; else rc-service "$1" stop 2>/dev/null || true; fi
 }
 
 # ── Secret Configuration Variables ─────────────────────────────────────────
@@ -158,24 +182,52 @@ track_ok()   { _ok="${_ok}  OK   $*\n"; }
 track_fail() { _fail="${_fail}  FAIL $*\n"; }
 track_skip() { _skip="${_skip}  SKIP $*\n"; }
 
+# ── OS Detection ─────────────────────────────────────────────────────────────────────
+if [ -f /etc/alpine-release ]; then
+  OS_ID="alpine"
+  CONF_DIR="/etc/conf.d"
+elif [ -f /etc/os-release ] && grep -qi 'ubuntu\|debian' /etc/os-release 2>/dev/null; then
+  OS_ID="debian"
+  CONF_DIR="/etc/default"
+else
+  OS_ID="unknown"
+  CONF_DIR="/etc/conf.d"
+  warn "Unknown OS — some commands may fail."
+fi
+
 need_root
-# openssl must be available before load_config_profile runs
-apk add --no-cache openssl >/dev/null 2>&1 || true
+# Ensure openssl is available for config profile decryption
+if [ "$OS_ID" = "debian" ]; then
+  apt-get install -y -q openssl >/dev/null 2>&1 || true
+else
+  apk add --no-cache openssl >/dev/null 2>&1 || true
+fi
 load_config_profile
 
-log "Blade Server bootstrap"
+log "Server bootstrap ($OS_ID)"
 printf 'Base dir : %s\n' "$BASE_DIR"
 printf 'Config   : %s\n' "$CONFIG_FILE"
 mkdir -p /root/projects /root/models /root/logs /root/scripts /root/backup /etc/aserv
 cp "$CONFIG_FILE" /etc/aserv/aserv.yaml
 printf 'Workspace directories created.\n'
 
-log "Updating Alpine packages"
-apk update && printf 'Index updated.\n'
-apk upgrade && printf 'Packages upgraded.\n'
+log "Updating packages"
+if [ "$OS_ID" = "debian" ]; then
+  DEBIAN_FRONTEND=noninteractive apt-get update -q && printf 'Index updated.\n'
+  DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -q && printf 'Packages upgraded.\n'
+else
+  apk update && printf 'Index updated.\n'
+  apk upgrade && printf 'Packages upgraded.\n'
+fi
 
 log "Base packages"
-apk add --no-cache ca-certificates curl wget git openssh-client openssh-server tmux nano vim htop btop tree jq zip unzip rsync bash shadow sudo openrc util-linux coreutils grep sed gawk procps openssl
+if [ "$OS_ID" = "debian" ]; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
+    ca-certificates curl wget git openssh-client openssh-server tmux nano vim htop tree \
+    jq zip unzip rsync bash shadow sudo util-linux coreutils grep sed gawk procps openssl
+else
+  apk add --no-cache ca-certificates curl wget git openssh-client openssh-server tmux nano vim htop btop tree jq zip unzip rsync bash shadow sudo openrc util-linux coreutils grep sed gawk procps openssl
+fi
 printf 'Base packages installed.\n'
 
 log "Git configuration"
@@ -368,13 +420,13 @@ if is_true opencode; then
   fi
 
   ask_if_empty OPENCODE_UI_PASSWORD "OpenCode UI password (Enter to disable auth)"
-  mkdir -p /etc/conf.d
-  cat > /etc/conf.d/opencode <<CFG
+  mkdir -p "$CONF_DIR"
+  cat > "$CONF_DIR/opencode" <<CFG
 OPENCODE_UI_PASSWORD="$OPENCODE_UI_PASSWORD"
 OPENCODE_PORT="${OPENCODE_PORT:-3000}"
 OPENCODE_HOSTNAME="${OPENCODE_HOSTNAME:-0.0.0.0}"
 CFG
-  printf 'OpenCode conf.d written (port %s)\n' "${OPENCODE_PORT:-3000}"
+  printf 'OpenCode conf written (%s, port %s)\n' "$CONF_DIR/opencode" "${OPENCODE_PORT:-3000}"
 else
   printf '[skip] opencode disabled in aserv.yaml\n'
   track_skip "opencode"
@@ -407,12 +459,12 @@ if is_true openchamber; then
     fi
   fi
   ask_if_empty OPENCHAMBER_PASSWORD "OpenChamber UI password (Enter to disable auth)"
-  mkdir -p /etc/conf.d
-  cat > /etc/conf.d/openchamber <<CFG
+  mkdir -p "$CONF_DIR"
+  cat > "$CONF_DIR/openchamber" <<CFG
 OPENCHAMBER_PASSWORD="$OPENCHAMBER_PASSWORD"
 OPENCHAMBER_PORT="${OPENCHAMBER_PORT:-3210}"
 CFG
-  printf 'OpenChamber conf.d written (port %s)\n' "${OPENCHAMBER_PORT:-3210}"
+  printf 'OpenChamber conf written (%s, port %s)\n' "$CONF_DIR/openchamber" "${OPENCHAMBER_PORT:-3210}"
 else
   printf '[skip] openchamber disabled in aserv.yaml\n'
   track_skip "openchamber"
@@ -461,7 +513,7 @@ if is_true services; then
   if [ -f "$BASE_DIR/openrc/openchamber" ]; then
     install_service "$BASE_DIR/openrc/openchamber"
     if command -v openchamber >/dev/null 2>&1; then
-      rc-service openchamber restart \
+      svc_start openchamber \
         && printf '  openchamber started OK (port %s)\n' "${OPENCHAMBER_PORT:-3210}" \
         || warn "openchamber service failed to start — check: aserv-logs openchamber"
       track_ok "service: openchamber started (port ${OPENCHAMBER_PORT:-3210})"
@@ -471,10 +523,11 @@ if is_true services; then
       track_fail "service: openchamber not started (binary missing)"
     fi
   fi
-  if [ -f "$BASE_DIR/openrc/cloudflared" ]; then
+  if [ "$OS_ID" != "debian" ] && [ -f "$BASE_DIR/openrc/cloudflared" ]; then
+    # Ubuntu: cloudflared service already set up by 'cloudflared service install' above
     install_service "$BASE_DIR/openrc/cloudflared"
     if command -v cloudflared >/dev/null 2>&1; then
-      rc-service cloudflared restart \
+      svc_start cloudflared \
         && printf '  cloudflared started OK\n' \
         || warn "cloudflared service failed to start — check: aserv-logs cloudflared"
       track_ok "service: cloudflared started"
