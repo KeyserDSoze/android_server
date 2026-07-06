@@ -229,7 +229,9 @@ log "Base packages"
 if [ "$OS_ID" = "debian" ]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
     ca-certificates curl wget git openssh-client openssh-server tmux nano vim htop tree \
-    jq zip unzip rsync bash shadow sudo util-linux coreutils grep sed gawk procps openssl
+    jq zip unzip rsync bash sudo coreutils grep sed gawk procps openssl || true
+  # btop not in all Ubuntu versions — optional
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q btop 2>/dev/null || true
 else
   apk add --no-cache ca-certificates curl wget git openssh-client openssh-server tmux nano vim htop btop tree jq zip unzip rsync bash shadow sudo openrc util-linux coreutils grep sed gawk procps openssl
 fi
@@ -243,45 +245,74 @@ if [ -n "$GIT_USER_EMAIL" ]; then git config --global user.email "$GIT_USER_EMAI
 
 if is_true devtools; then
   log "Dev tools"
-  apk add --no-cache build-base clang cmake make pkgconf linux-headers openssl-dev zlib-dev libffi-dev sqlite-dev
+  if [ "$OS_ID" = "debian" ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
+      build-essential clang cmake make pkg-config libssl-dev zlib1g-dev libffi-dev libsqlite3-dev || true
+  else
+    apk add --no-cache build-base clang cmake make pkgconf linux-headers openssl-dev zlib-dev libffi-dev sqlite-dev
+  fi
   printf 'Dev tools installed.\n'
+  track_ok "devtools"
 else
   printf '[skip] devtools disabled in aserv.yaml\n'
 fi
 
 if is_true node; then
   log "Node.js + npm"
-  # Try Node.js 22 LTS, then 20 LTS, then whatever Alpine has
-  apk add --no-cache nodejs npm || \
-  apk add --no-cache nodejs22 npm || \
-  apk add --no-cache nodejs20 npm || \
-  warn "Node.js installation failed."
+  if [ "$OS_ID" = "debian" ]; then
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q nodejs || true
+  else
+    apk add --no-cache nodejs npm || \
+    apk add --no-cache nodejs22 npm || \
+    apk add --no-cache nodejs20 npm || \
+    warn "Node.js installation failed."
+  fi
   NODE_VER="$(node -v 2>/dev/null || echo unknown)"
   NPM_VER="$(npm -v 2>/dev/null || echo unknown)"
   printf 'Node.js %s / npm %s\n' "$NODE_VER" "$NPM_VER"
-  # Warn if node is too old for opencode/openchamber
   NODE_MAJOR="$(printf '%s' "$NODE_VER" | sed 's/v//;s/\..*//;s/unknown/0/')"
   if [ "$NODE_MAJOR" -lt 20 ] 2>/dev/null; then
     warn "Node.js $NODE_VER may be too old. opencode/openchamber require Node 20+."
-    warn "Consider upgrading Alpine or running: apk add nodejs --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community"
+    track_fail "node $NODE_VER (too old, need 20+)"
+  else
+    track_ok "node $NODE_VER / npm $NPM_VER"
   fi
 else
   printf '[skip] node disabled in aserv.yaml\n'
+  track_skip "node"
 fi
 
 if is_true python; then
   log "Python"
-  apk add --no-cache python3 py3-pip py3-virtualenv
+  if [ "$OS_ID" = "debian" ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3 python3-pip python3-venv || true
+  else
+    apk add --no-cache python3 py3-pip py3-virtualenv
+  fi
   printf 'Python %s\n' "$(python3 --version 2>/dev/null || echo n/a)"
+  track_ok "python $(python3 --version 2>/dev/null || echo installed)"
 else
   printf '[skip] python disabled in aserv.yaml\n'
+  track_skip "python"
 fi
 
 if is_true github; then
   log "GitHub CLI"
-  apk add --no-cache github-cli \
-    && track_ok "gh $(gh --version 2>/dev/null | head -1 || echo installed)" \
-    || { warn "github-cli not available in Alpine repo. Install manually or use apk edge/community."; track_fail "github-cli: not in apk repo"; }
+  if [ "$OS_ID" = "debian" ]; then
+    mkdir -p /usr/share/keyrings
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      | tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+    apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q gh \
+      && track_ok "gh $(gh --version 2>/dev/null | head -1 || echo installed)" \
+      || { warn "GitHub CLI apt install failed."; track_fail "github-cli: install failed"; }
+  else
+    apk add --no-cache github-cli \
+      && track_ok "gh $(gh --version 2>/dev/null | head -1 || echo installed)" \
+      || { warn "github-cli not available in Alpine repo."; track_fail "github-cli: not in apk repo"; }
+  fi
 else
   printf '[skip] github disabled in aserv.yaml\n'
   track_skip "github-cli"
@@ -289,9 +320,15 @@ fi
 
 if is_true docker; then
   log "Docker"
-  apk add --no-cache docker docker-cli docker-compose || warn "Docker not installed. If Podroid already includes it, ignore this."
-  rc-update add docker default >/dev/null 2>&1 || true
-  rc-service docker start >/dev/null 2>&1 || true
+  if [ "$OS_ID" = "debian" ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q docker.io docker-compose || true
+    systemctl enable docker >/dev/null 2>&1 || true
+    systemctl start docker >/dev/null 2>&1 || true
+  else
+    apk add --no-cache docker docker-cli docker-compose || warn "Docker not installed. If Podroid already includes it, ignore this."
+    rc-update add docker default >/dev/null 2>&1 || true
+    rc-service docker start >/dev/null 2>&1 || true
+  fi
   printf 'Docker: %s\n' "$(docker --version 2>/dev/null || echo n/a)"
   track_ok "docker $(docker --version 2>/dev/null | head -1 || echo installed)"
 else
@@ -301,7 +338,11 @@ fi
 
 if is_true podman; then
   log "Podman"
-  apk add --no-cache podman fuse-overlayfs slirp4netns || warn "Podman not available in repo."
+  if [ "$OS_ID" = "debian" ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q podman || warn "Podman not available on this Ubuntu version."
+  else
+    apk add --no-cache podman fuse-overlayfs slirp4netns || warn "Podman not available in repo."
+  fi
   track_ok "podman"
 else
   printf '[skip] podman disabled in aserv.yaml\n'
@@ -310,7 +351,11 @@ fi
 
 if is_true lxc; then
   log "LXC"
-  apk add --no-cache lxc lxc-templates || warn "LXC not available in repo."
+  if [ "$OS_ID" = "debian" ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q lxc || warn "LXC not available."
+  else
+    apk add --no-cache lxc lxc-templates || warn "LXC not available in repo."
+  fi
   track_ok "lxc"
 else
   printf '[skip] lxc disabled in aserv.yaml\n'
@@ -319,40 +364,63 @@ fi
 
 if is_true cloudflare; then
   log "Cloudflared"
-  if ! apk add --no-cache cloudflared 2>/dev/null; then
-    warn "cloudflared not in apk — downloading binary from GitHub releases."
-    _cf_arch="$(uname -m)"
-    case "$_cf_arch" in
-      aarch64|arm64) _cf_arch="arm64" ;;
-      armv7*)        _cf_arch="arm"   ;;
-      *)             _cf_arch="amd64" ;;
-    esac
-    printf 'Architecture: %s -> cloudflared-linux-%s\n' "$(uname -m)" "$_cf_arch"
-    curl -fsSL \
-      "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${_cf_arch}" \
-      -o /usr/local/bin/cloudflared \
-      && chmod +x /usr/local/bin/cloudflared \
-      && printf 'cloudflared downloaded: %s\n' "$(cloudflared --version 2>/dev/null || echo ok)" \
-      || warn "cloudflared download failed. Try manually: https://github.com/cloudflare/cloudflared/releases"
+  if [ "$OS_ID" = "debian" ]; then
+    mkdir -p --mode=0755 /usr/share/keyrings
+    curl -fsSL https://pkg.cloudflare.com/cloudflare-public-v2.gpg | tee /usr/share/keyrings/cloudflare-public-v2.gpg >/dev/null
+    echo 'deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main' \
+      | tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
+    apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q cloudflared \
+      && printf 'cloudflared installed via apt\n' \
+      || warn "cloudflared apt install failed."
+    if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+      cloudflared service install "$CLOUDFLARE_TUNNEL_TOKEN" \
+        && printf 'cloudflared systemd service installed\n' \
+        && track_ok "service: cloudflared started (systemd)" \
+        || warn "cloudflared service install failed."
+    fi
   else
-    printf 'cloudflared installed via apk: %s\n' "$(cloudflared --version 2>/dev/null || echo ok)"
-  fi
-  if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
-    mkdir -p /etc/aserv
-    printf '%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > /etc/aserv/cloudflare-token
-    chmod 600 /etc/aserv/cloudflare-token
-    printf 'Cloudflare tunnel token saved to /etc/aserv/cloudflare-token\n'
-  else
-    printf 'No tunnel token set — run aserv-setup-cloudflare after install.\n'
+    if ! apk add --no-cache cloudflared 2>/dev/null; then
+      warn "cloudflared not in apk — downloading binary from GitHub releases."
+      _cf_arch="$(uname -m)"
+      case "$_cf_arch" in
+        aarch64|arm64) _cf_arch="arm64" ;;
+        armv7*)        _cf_arch="arm"   ;;
+        *)             _cf_arch="amd64" ;;
+      esac
+      curl -fsSL \
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${_cf_arch}" \
+        -o /usr/local/bin/cloudflared \
+        && chmod +x /usr/local/bin/cloudflared \
+        && printf 'cloudflared downloaded: %s\n' "$(cloudflared --version 2>/dev/null || echo ok)" \
+        || warn "cloudflared download failed. Try manually: https://github.com/cloudflare/cloudflared/releases"
+    else
+      printf 'cloudflared installed via apk: %s\n' "$(cloudflared --version 2>/dev/null || echo ok)"
+    fi
+    if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+      mkdir -p /etc/aserv
+      printf '%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > /etc/aserv/cloudflare-token
+      chmod 600 /etc/aserv/cloudflare-token
+      printf 'Cloudflare tunnel token saved to /etc/aserv/cloudflare-token\n'
+    else
+      printf 'No tunnel token set — run aserv-setup-cloudflare after install.\n'
+    fi
   fi
 else
   printf '[skip] cloudflare disabled in aserv.yaml\n'
+  track_skip "cloudflare"
 fi
 
 if is_true tailscale; then
   log "Tailscale"
-  apk add --no-cache tailscale || warn "tailscale not available via apk."
-  rc-update add tailscale default >/dev/null 2>&1 || true
+  if [ "$OS_ID" = "debian" ]; then
+    curl -fsSL https://tailscale.com/install.sh | sh 2>/dev/null \
+      && printf 'Tailscale installed\n' || warn "Tailscale install failed."
+    systemctl enable tailscaled >/dev/null 2>&1 || true
+    systemctl start tailscaled >/dev/null 2>&1 || true
+  else
+    apk add --no-cache tailscale || warn "tailscale not available via apk."
+    rc-update add tailscale default >/dev/null 2>&1 || true
+  fi
   if [ -n "$TAILSCALE_AUTH_KEY" ]; then
     tailscale up --authkey="$TAILSCALE_AUTH_KEY" || warn "Tailscale headless join failed. Run 'tailscale up' manually."
   fi
@@ -362,7 +430,13 @@ fi
 
 if is_true rclone; then
   log "Rclone"
-  apk add --no-cache rclone || warn "rclone not available via apk."
+  if [ "$OS_ID" = "debian" ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q rclone 2>/dev/null \
+      || curl -fsSL https://rclone.org/install.sh | bash 2>/dev/null \
+      || warn "rclone install failed."
+  else
+    apk add --no-cache rclone || warn "rclone not available via apk."
+  fi
 else
   printf '[skip] rclone disabled in aserv.yaml\n'
 fi
@@ -497,7 +571,11 @@ fi
 
 if is_true llm; then
   log "LLM tools: llama.cpp prerequisites"
-  apk add --no-cache git cmake make clang openblas-dev || true
+  if [ "$OS_ID" = "debian" ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q git cmake make clang libopenblas-dev || true
+  else
+    apk add --no-cache git cmake make clang openblas-dev || true
+  fi
   printf 'LLM prerequisites installed.\n'
   track_ok "llm prerequisites (cmake, clang, openblas)"
 else
@@ -552,9 +630,14 @@ if is_true ssh; then
   if [ -n "$SSH_PORT" ] && [ "$SSH_PORT" != "22" ]; then
     sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config 2>/dev/null || true
   fi
-  rc-update add sshd default >/dev/null 2>&1 || true
-  ssh-keygen -A >/dev/null 2>&1 || true
-  rc-service sshd restart >/dev/null 2>&1 || true
+  if [ "$OS_ID" = "debian" ]; then
+    systemctl enable ssh >/dev/null 2>&1 || true
+    systemctl restart ssh >/dev/null 2>&1 || true
+  else
+    rc-update add sshd default >/dev/null 2>&1 || true
+    ssh-keygen -A >/dev/null 2>&1 || true
+    rc-service sshd restart >/dev/null 2>&1 || true
+  fi
 fi
 
 if is_true aliases; then

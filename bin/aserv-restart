@@ -1,5 +1,12 @@
 #!/bin/sh
-for s in openchamber cloudflared sshd docker tailscale; do
-  [ -x "/etc/init.d/$s" ] && rc-service "$s" restart || true
+if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
+
+for s in openchamber opencode cloudflared sshd docker tailscale; do
+  if [ "$OS_ID" = "debian" ]; then
+    systemctl is-enabled "$s" >/dev/null 2>&1 \
+      && systemctl restart "$s" 2>/dev/null && printf 'restarted: %s\n' "$s" || true
+  else
+    [ -x "/etc/init.d/$s" ] && rc-service "$s" restart 2>/dev/null && printf 'restarted: %s\n' "$s" || true
+  fi
 done
 aserv-status

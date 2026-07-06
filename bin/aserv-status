@@ -1,18 +1,36 @@
 #!/bin/sh
-printf '\nAndroid Server Status\n'
-printf '=======================\n'
+
+# Detect OS
+if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
+
+svc_status() {
+  if [ "$OS_ID" = "debian" ]; then
+    systemctl is-active "$1" 2>/dev/null || echo "$1: inactive"
+  else
+    [ -x "/etc/init.d/$1" ] && rc-service "$1" status 2>/dev/null || true
+  fi
+}
+
+printf '\nAndroid/Linux Server Status\n'
+printf '============================\n'
+printf 'OS:       %s\n' "$OS_ID"
 printf 'Hostname: '; cat /etc/aserv/hostname 2>/dev/null || echo 'not configured'
 printf 'Tunnel:   '; cat /etc/aserv/tunnel-name 2>/dev/null || echo 'not configured'
 printf '\nServices:\n'
-for s in sshd docker tailscale openchamber cloudflared; do
-  if [ -x "/etc/init.d/$s" ]; then rc-service "$s" status || true; fi
+for s in sshd ssh docker tailscale openchamber cloudflared opencode; do
+  printf '  %-14s ' "$s"
+  if [ "$OS_ID" = "debian" ]; then
+    systemctl is-active "$s" 2>/dev/null || echo inactive
+  else
+    [ -x "/etc/init.d/$s" ] && rc-service "$s" status 2>/dev/null || echo not-registered
+  fi
 done
 printf '\nTools:\n'
-for c in git gh az node npm python3 cloudflared opencode openchamber docker podman lxc-create rclone tailscale tmux; do
-  printf '%-14s ' "$c"
+for c in git gh az node npm python3 cloudflared opencode openchamber docker podman rclone tailscale tmux; do
+  printf '  %-14s ' "$c"
   command -v "$c" >/dev/null 2>&1 && echo OK || echo MISSING
 done
 printf '\nSystem:\n'
-free -h || true
+free -h 2>/dev/null || true
 df -h / || true
-ip -4 addr show 2>/dev/null | awk '/inet / {print $2, $NF}' || true
+ip -4 addr show 2>/dev/null | awk '/inet / {print "  " $2, $NF}' || true

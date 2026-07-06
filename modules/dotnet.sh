@@ -1,14 +1,19 @@
 #!/bin/sh
 set -eu
 
-# Install latest stable .NET SDK for Alpine/ARM64 when available.
-# Preferred path: Alpine packages (Microsoft docs list dotnet10-sdk / dotnet9-sdk / dotnet8-sdk).
-# Fallback path: Microsoft dotnet-install.sh non-admin install.
+# Install latest stable .NET SDK.
+# Alpine: try apk packages (dotnet10-sdk / dotnet9-sdk / dotnet8-sdk), fallback to dotnet-install.sh
+# Ubuntu/Debian: use dotnet-install.sh directly (packages via Microsoft feed optional)
 
 log() { printf '\n\033[1;32m== %s ==\033[0m\n' "$*"; }
 warn() { printf '\n\033[1;33m!! %s\033[0m\n' "$*"; }
 
-apk add --no-cache icu-libs krb5-libs libgcc libintl libssl3 libstdc++ zlib curl bash ca-certificates || true
+if [ -f /etc/alpine-release ]; then
+  apk add --no-cache icu-libs krb5-libs libgcc libintl libssl3 libstdc++ zlib curl bash ca-certificates || true
+else
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
+    libicu-dev libkrb5-dev libgcc-s1 libssl3 libstdc++6 zlib1g curl bash ca-certificates 2>/dev/null || true
+fi
 
 install_apk_sdk() {
   for pkg in dotnet10-sdk dotnet9-sdk dotnet8-sdk; do
@@ -19,7 +24,7 @@ install_apk_sdk() {
   return 1
 }
 
-if install_apk_sdk; then
+if [ -f /etc/alpine-release ] && install_apk_sdk; then
   log "dotnet installed via apk"
 else
   warn "dotnet*-sdk package not available via apk; falling back to dotnet-install.sh"
