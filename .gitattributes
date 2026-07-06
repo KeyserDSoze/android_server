@@ -1,2 +1,11 @@
 # Encrypted config profiles — treat as binary to prevent CRLF corruption
 config/*.enc binary
+
+# Systemd service files must always have LF line endings
+systemd/*.service text eol=lf
+
+# Shell scripts must always have LF line endings
+*.sh text eol=lf
+bin/* text eol=lf
+openrc/* text eol=lf
+modules/* text eol=lf

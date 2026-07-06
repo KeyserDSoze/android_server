@@ -36,6 +36,8 @@ install_service() {
     svc_src="$BASE_DIR/systemd/${svc_name}.service"
     if [ -f "$svc_src" ]; then
       cp "$svc_src" "/etc/systemd/system/${svc_name}.service"
+      # Strip Windows CRLF from service file
+      sed -i 's/\r$//' "/etc/systemd/system/${svc_name}.service"
       systemctl daemon-reload >/dev/null 2>&1 || true
       systemctl enable "$svc_name" >/dev/null 2>&1 || true
     else
