@@ -395,13 +395,66 @@ Updates: Alpine packages, npm globals, Azure CLI, GitHub CLI extensions.
 
 ## Remote Access
 
-### SSH
+### SSH — Direct (local network only)
 
 ```sh
-ssh root@<phone-ip> -p 22
+ssh root@<server-ip> -p 22
 ```
 
-### Cloudflare Tunnel
+---
+
+### SSH — Via Cloudflare Tunnel (recommended, works from anywhere)
+
+SSH through Cloudflare requires **cloudflared installed on your client PC** and a one-time SSH config entry.
+
+#### 1. Install cloudflared on your PC
+
+- **Windows**: download from https://github.com/cloudflare/cloudflared/releases (`.exe`)
+- **macOS**: `brew install cloudflared`
+- **Linux**: `apt-get install cloudflared` (via Cloudflare apt repo)
+
+#### 2. Edit your SSH config file
+
+| OS | File location |
+|---|---|
+| Windows | `C:\Users\<yourname>\.ssh\config` |
+| macOS / Linux | `~/.ssh/config` |
+
+Create the file if it doesn't exist, then add:
+
+```
+Host ssh.yourdomain.com
+    HostName ssh.yourdomain.com
+    ProxyCommand cloudflared access ssh --hostname %h
+    User root
+```
+
+Replace `ssh.yourdomain.com` with your actual SSH hostname (e.g. `ssh3.opencode.zone`) and `root` with the actual username on the server.
+
+**On Windows**, create or edit the file in PowerShell:
+
+```powershell
+notepad "$env:USERPROFILE\.ssh\config"
+```
+
+If the `.ssh` folder doesn't exist:
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.ssh"
+notepad "$env:USERPROFILE\.ssh\config"
+```
+
+#### 3. Connect
+
+```sh
+ssh ssh.yourdomain.com
+```
+
+Cloudflare will authenticate you (browser popup on first access if Cloudflare Access is enabled) and proxy the connection to the server.
+
+---
+
+### Cloudflare Tunnel — OpenChamber
 
 After setup, access OpenChamber at:
 
@@ -409,9 +462,6 @@ After setup, access OpenChamber at:
 https://chamber.yourdomain.com
 ```
 
----
-
-## Using OpenCode
 
 ```sh
 cd ~/projects
