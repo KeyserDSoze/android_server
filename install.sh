@@ -151,6 +151,11 @@ load_config_profile() {
     fail "Decryption failed — see details above."
   fi
 
+  # Strip Windows CRLF line endings — config files edited on Windows have \r\n
+  _clean="$(mktemp /tmp/aserv-clean-XXXXXX)"
+  tr -d '\r' < "$_tmp" > "$_clean"
+  rm -f "$_tmp"; _tmp="$_clean"
+
   # Source the decrypted config; relax -eu temporarily for safe include
   set +eu
   # shellcheck disable=SC1090
