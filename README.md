@@ -1,12 +1,22 @@
 # Android Server
 
-Transform any Android smartphone into a persistent Linux development server using **Podroid**, **Alpine Linux**, **Cloudflare Tunnel**, **OpenChamber**, **OpenCode**, and a full developer toolchain.
+Transform any Android smartphone **or Ubuntu server** into a persistent Linux development server using **Cloudflare Tunnel**, **OpenChamber**, **OpenCode**, and a full developer toolchain.
 
 Repository:
 
 ```sh
 git clone https://github.com/KeyserDSoze/android_server.git
 ```
+
+---
+
+## Supported Platforms
+
+| Platform | Init system | Package manager | Status |
+|---|---|---|---|
+| Android + Podroid (Alpine Linux) | OpenRC | apk | Fully supported |
+| Ubuntu Server 22.04 / 24.04 | systemd | apt | Fully supported |
+| Debian 12+ | systemd | apt | Supported |
 
 ---
 
@@ -30,6 +40,8 @@ The server can be used for:
 
 ## Architecture
 
+### Android + Podroid (Alpine)
+
 ```text
 Android
 └── Podroid
@@ -38,14 +50,22 @@ Android
         ├── OpenCode
         ├── Cloudflare Tunnel
         ├── SSH
-        ├── Git
-        ├── GitHub CLI
-        ├── Azure CLI
-        ├── .NET SDK
-        ├── Node.js
-        ├── Python
+        ├── Git, GitHub CLI, Azure CLI, .NET SDK, Node.js, Python
         ├── Docker / Podman / LXC (optional)
         └── OpenRC services (autostart on boot)
+```
+
+### Ubuntu Server / Debian
+
+```text
+Ubuntu Server
+├── OpenChamber
+├── OpenCode
+├── Cloudflare Tunnel (cloudflared → systemd)
+├── SSH
+├── Git, GitHub CLI, Azure CLI, .NET SDK, Node.js, Python
+├── Docker / Podman / LXC (optional)
+└── systemd services (autostart on boot)
 ```
 
 ---
@@ -63,6 +83,18 @@ Any Android smartphone with:
 No root is required.
 No bootloader unlock is required.
 The existing Android installation is untouched.
+
+---
+
+## Ubuntu Server Requirements
+
+Any machine (physical, VM, VPS, mini PC) with:
+
+- Ubuntu 22.04 LTS / 24.04 LTS (or Debian 12+)
+- x86_64 or ARM64 architecture
+- 2 GB RAM minimum (4 GB recommended)
+- 20 GB free disk
+- Internet connection
 
 ---
 
@@ -115,7 +147,7 @@ No aggressive power-saving mode
 
 ---
 
-## First VM Boot
+## First VM Boot (Android/Alpine)
 
 Open Podroid, start the VM, and open the built-in terminal.
 
@@ -130,12 +162,11 @@ apk add git
 
 ## Clone This Repository
 
-Inside the Podroid VM terminal:
+On any platform:
 
 ```sh
 git clone https://github.com/KeyserDSoze/android_server.git
 cd android_server
-chmod +x install.sh
 ```
 
 ---
@@ -202,21 +233,38 @@ If you skip this step, the installer will prompt for each value interactively.
 
 ## Installation
 
-Run as root inside the Podroid Alpine VM:
+`install.sh` detects the OS automatically and uses the correct package manager and init system.
+
+### On Android/Alpine (inside Podroid VM)
 
 ```sh
 sh install.sh
 ```
 
+### On Ubuntu Server / Debian
+
+```sh
+sudo bash install.sh
+```
+
 The installer will:
 
-1. List available encrypted config profiles and offer to load one
-2. Update Alpine packages
-3. Install all enabled components from `aserv.yaml`
-4. Configure git user (from profile or interactively)
-5. Register OpenRC services for autostart
-6. Create the workspace directory structure
-7. Install `aserv-*` helper commands system-wide
+1. Detect the OS (Alpine or Ubuntu/Debian)
+2. List available encrypted config profiles and offer to load one
+3. Update packages (`apk` or `apt-get`)
+4. Install all enabled components from `aserv.yaml`
+5. Configure git user (from profile or interactively)
+6. Register services for autostart (OpenRC on Alpine, systemd on Ubuntu)
+7. Create the workspace directory structure
+8. Install `aserv-*` helper commands system-wide
+
+**Ubuntu-specific behaviour:**
+- Node.js 22 LTS installed via NodeSource
+- GitHub CLI installed via official apt repository
+- cloudflared installed via Cloudflare apt repository
+- `cloudflared service install <token>` configures systemd automatically
+- Services managed via `systemctl` (openchamber, opencode)
+- Config written to `/etc/default/` instead of `/etc/conf.d/`
 
 ---
 
@@ -260,7 +308,9 @@ dotnet --info
 
 ## Automatic Services at Boot
 
-OpenRC manages all persistent services. On VM boot these start automatically:
+### Alpine (OpenRC)
+
+On VM boot these start automatically:
 
 ```
 sshd
@@ -274,19 +324,30 @@ Check status:
 
 ```sh
 aserv-status
+# or
+rc-service openchamber status
+rc-service cloudflared status
 ```
 
-Restart all services:
+### Ubuntu (systemd)
 
-```sh
-aserv-restart
+On boot these start automatically:
+
+```
+sshd
+openchamber
+cloudflared   (managed by cloudflared itself via systemctl)
+opencode
 ```
 
-View logs:
+Check status:
 
 ```sh
-aserv-logs openchamber
-aserv-logs cloudflared
+aserv-status
+# or
+systemctl status openchamber
+systemctl status cloudflared
+systemctl status opencode
 ```
 
 ---
@@ -424,17 +485,27 @@ dotnet new console -o ~/projects/test && cd ~/projects/test && dotnet run
 ### Tunnel does not start
 
 ```sh
-cloudflared tunnel list
+# Alpine
 rc-service cloudflared status
 aserv-logs cloudflared
+
+# Ubuntu
+systemctl status cloudflared
+journalctl -u cloudflared -n 50
 ```
 
 ### OpenChamber not responding
 
 ```sh
+# Alpine
 rc-service openchamber status
 curl http://127.0.0.1:3210
 aserv-logs openchamber
+
+# Ubuntu
+systemctl status openchamber
+journalctl -u openchamber -n 50
+curl http://127.0.0.1:3210
 ```
 
 ### Azure CLI not working
@@ -454,15 +525,26 @@ gh auth status
 
 ---
 
-## Quick Start (TL;DR)
+## Quick Start — Android / Alpine (TL;DR)
 
 ```sh
 apk update && apk add git
 git clone https://github.com/KeyserDSoze/android_server.git
 cd android_server
-chmod +x install.sh
 sh install.sh
 aserv-setup-cloudflare
+aserv-auth
+aserv-status
+```
+
+## Quick Start — Ubuntu Server (TL;DR)
+
+```sh
+apt-get update && apt-get install -y git
+git clone https://github.com/KeyserDSoze/android_server.git
+cd android_server
+sudo bash install.sh
+# cloudflare tunnel is configured automatically from the config profile
 aserv-auth
 aserv-status
 ```
