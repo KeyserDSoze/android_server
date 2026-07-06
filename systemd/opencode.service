@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/opencode
-ExecStart=/bin/bash -c '. /etc/default/opencode && exec /usr/local/bin/opencode serve --ui-password "$OPENCODE_UI_PASSWORD" --hostname "${OPENCODE_HOSTNAME:-0.0.0.0}" --port "${OPENCODE_PORT:-3000}"'
+ExecStart=/bin/bash -c '. /etc/default/opencode; PATH=/usr/local/bin:/usr/bin:/bin; cmd=$(which opencode 2>/dev/null || echo opencode); exec $cmd serve --ui-password "$OPENCODE_UI_PASSWORD" --hostname "${OPENCODE_HOSTNAME:-0.0.0.0}" --port "${OPENCODE_PORT:-3000}"'
 Restart=always
 RestartSec=5
 StandardOutput=append:/root/logs/opencode.log
