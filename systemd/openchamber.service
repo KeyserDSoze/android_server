@@ -3,10 +3,10 @@ Description=OpenChamber UI
 After=network.target
 
 [Service]
-Type=simple
+Type=forking
 EnvironmentFile=/etc/default/openchamber
 ExecStart=/bin/bash -c '. /etc/default/openchamber; PATH=/usr/local/bin:/usr/bin:/bin; cmd=$(which openchamber 2>/dev/null || echo openchamber); exec $cmd --ui-password "$OPENCHAMBER_PASSWORD" --port "${OPENCHAMBER_PORT:-3210}"'
-Restart=always
+Restart=on-failure
 RestartSec=5
 StandardOutput=append:/root/logs/openchamber.log
 StandardError=append:/root/logs/openchamber.log

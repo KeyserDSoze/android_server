@@ -40,6 +40,13 @@ install_service() {
       sed -i 's/\r$//' "/etc/systemd/system/${svc_name}.service"
       systemctl daemon-reload >/dev/null 2>&1 || true
       systemctl enable "$svc_name" >/dev/null 2>&1 || true
+      # Restart if already running so the new config takes effect immediately
+      if systemctl is-active "$svc_name" >/dev/null 2>&1; then
+        systemctl restart "$svc_name" >/dev/null 2>&1 || true
+        printf '  %s: service file updated and restarted\n' "$svc_name"
+      else
+        printf '  %s: service file installed (will start below)\n' "$svc_name"
+      fi
     else
       warn "No systemd service file for $svc_name (expected: systemd/${svc_name}.service)"
     fi

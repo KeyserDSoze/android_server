@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 EnvironmentFile=/etc/default/opencode
 ExecStart=/bin/bash -c '. /etc/default/opencode; PATH=/usr/local/bin:/usr/bin:/bin; cmd=$(which opencode 2>/dev/null || echo opencode); exec $cmd serve --ui-password "$OPENCODE_UI_PASSWORD" --hostname "${OPENCODE_HOSTNAME:-0.0.0.0}" --port "${OPENCODE_PORT:-3000}"'
-Restart=always
+Restart=on-failure
 RestartSec=5
 StandardOutput=append:/root/logs/opencode.log
 StandardError=append:/root/logs/opencode.log
