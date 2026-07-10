@@ -1,0 +1,55 @@
+#!/bin/sh
+# aserv — Android/Linux Server helper
+# Usage: aserv [--help | -h]  or just: aserv
+
+cat <<'HELP'
+
+  aserv — Android/Linux Server helper commands
+  ═══════════════════════════════════════════════════════════════
+
+  SYSTEM
+    aserv-status            System overview: OS, services, tools, disk, RAM
+    aserv-restart           Restart all managed services
+    aserv-logs <service>    Tail logs  (openchamber | cloudflared | opencode)
+
+  UPDATES
+    aserv-update            Update everything: OS packages, npm globals, az, gh
+    aserv-update-ai         Stop → reinstall → restart OpenChamber + OpenCode
+
+  CONFIGURATION
+    aserv-config-build      Encrypt a configsrc/ profile → config/*.enc
+                            Usage: aserv-config-build configsrc/myprofile.conf
+
+  CLOUDFLARE
+    aserv-setup-cloudflare  Configure Cloudflare Tunnel
+                            (token-based: saves token and restarts service)
+                            (local tunnel: login → create → config.yml)
+
+  AUTH
+    aserv-auth              Authenticate GitHub CLI (gh) and Azure CLI (az)
+
+  AI / LLM
+    aserv-llm-install       Install llama.cpp prerequisites for local LLM
+
+  ═══════════════════════════════════════════════════════════════
+
+  Config profiles (encrypted secrets):
+    configsrc/<name>.conf   Plaintext profile — gitignored, never committed
+    config/<name>.enc       Encrypted profile — safe to commit to git
+
+  Service config (Ubuntu):
+    /etc/default/openchamber
+    /etc/default/opencode
+
+  Service config (Alpine):
+    /etc/conf.d/openchamber
+    /etc/conf.d/opencode
+
+  Logs:
+    /root/logs/openchamber.log
+    /root/logs/opencode.log
+    /root/logs/cloudflared.log
+
+  ═══════════════════════════════════════════════════════════════
+
+HELP
