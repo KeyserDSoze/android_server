@@ -243,8 +243,12 @@ printf 'Workspace directories created.\n'
 
 log "Updating packages"
 if [ "$OS_ID" = "debian" ]; then
+  # Prevent needrestart from auto-restarting services (e.g. cloudflared) during upgrade
+  export NEEDRESTART_MODE=l
+  export NEEDRESTART_SUSPEND=1
   DEBIAN_FRONTEND=noninteractive apt-get update -q && printf 'Index updated.\n'
   DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -q && printf 'Packages upgraded.\n'
+  unset NEEDRESTART_MODE NEEDRESTART_SUSPEND
 else
   apk update && printf 'Index updated.\n'
   apk upgrade && printf 'Packages upgraded.\n'
