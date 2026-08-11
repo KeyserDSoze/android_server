@@ -13,7 +13,7 @@ cat <<'HELP'
     aserv-logs <service>    Tail logs  (openchamber | codex-proxy | cloudflared | opencode)
 
   UPDATES
-    aserv-update            Update everything: OS packages, npm globals, az, gh
+    aserv-update            Update everything or choose components interactively
     aserv-update-ai         Stop → reinstall → restart OpenChamber + OpenCode
 
   CONFIGURATION

@@ -12,7 +12,43 @@ is_true() {
   key="$1"
   [ -f "$CONFIG_FILE" ] || return 1
   val="$(awk -F: -v k="$key" '$1==k {gsub(/[ \t]/,"",$2); print tolower($2)}' "$CONFIG_FILE" | tail -n1)"
+  if [ "${_selection_ready:-0}" = "1" ]; then
+    case " $_selected_features " in
+      *" $key "*) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
   [ "$val" = "true" ] || [ "$val" = "yes" ] || [ "$val" = "1" ]
+}
+
+feature_enabled_in_yaml() {
+  key="$1"
+  [ -f "$CONFIG_FILE" ] || return 1
+  val="$(awk -F: -v k="$key" '$1==k {gsub(/[ \t]/,"",$2); print tolower($2)}' "$CONFIG_FILE" | tail -n1)"
+  [ "$val" = "true" ] || [ "$val" = "yes" ] || [ "$val" = "1" ]
+}
+
+choose_install_mode() {
+  _selection_ready=0
+  _selected_features=""
+  printf '\nInstall mode: [A]ll components or [C]hoose components? [A]: '
+  read _mode
+  _mode="$(printf '%s' "${_mode:-A}" | tr -d '\r' | tr '[:lower:]' '[:upper:]')"
+  [ "$_mode" = "C" ] || { printf 'Install mode: all components enabled in aserv.yaml.\n'; return 0; }
+
+  printf '\nChoose components for this run (Y/N). The aserv.yaml file will not be changed.\n'
+  for _feature in github azure dotnet cloudflare opencode openchamber codex codex_proxy ssh docker podman lxc llm tailscale rclone node python devtools aliases services; do
+    _default="N"
+    feature_enabled_in_yaml "$_feature" && _default="Y"
+    printf '  %-12s [%s]: ' "$_feature" "$_default"
+    read _answer
+    _answer="$(printf '%s' "${_answer:-$_default}" | tr -d '\r' | tr '[:lower:]' '[:upper:]')"
+    if [ "$_answer" = "Y" ] || [ "$_answer" = "YES" ]; then
+      _selected_features="$_selected_features $_feature"
+    fi
+  done
+  _selection_ready=1
+  printf 'Component selection saved for this run.\n'
 }
 
 need_root() {
@@ -221,6 +257,7 @@ else
   apk add --no-cache openssl >/dev/null 2>&1 || true
 fi
 load_config_profile
+choose_install_mode
 
 # ── Interactive setup questions ────────────────────────────────────────────────────────
 if is_true cloudflare && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
@@ -773,6 +810,29 @@ alias aserv-restart='aserv-restart'
 alias projects='cd /root/projects'
 PROFILE
 fi
+
+restart_managed_services() {
+  log "Final service restart"
+  if [ "$OS_ID" = "debian" ]; then
+    for _service in ssh openchamber opencode codex-proxy cloudflared tailscaled docker; do
+      if systemctl is-enabled "$_service" >/dev/null 2>&1; then
+        systemctl restart "$_service" >/dev/null 2>&1 \
+          && printf '  restarted: %s\n' "$_service" \
+          || warn "  restart failed: $_service"
+      fi
+    done
+  else
+    for _service in sshd openchamber opencode codex-proxy cloudflared tailscale docker; do
+      if [ -x "/etc/init.d/$_service" ]; then
+        rc-service "$_service" restart >/dev/null 2>&1 \
+          && printf '  restarted: %s\n' "$_service" \
+          || warn "  restart failed: $_service"
+      fi
+    done
+  fi
+}
+
+restart_managed_services
 
 log "Installation complete"
 printf '%s\n' "Next steps:" \

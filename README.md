@@ -341,6 +341,13 @@ If the distribution is not Debian-based or Alpine, use a supported base distribu
 
 ### What happens after starting the installer
 
+At the start of the installer you can choose:
+
+- `A` / `All`: use every component enabled with `true` in `aserv.yaml`
+- `C` / `Choose`: answer `Y` or `N` for each component for this run only
+
+The interactive choice does not edit `aserv.yaml`. It is useful when the same repository profile is shared by machines with different hardware, such as a Raspberry Pi and a larger server.
+
 The installer will:
 
 1. Detect the OS and select the package manager (`apk` or `apt-get`)
@@ -352,6 +359,7 @@ The installer will:
 7. Register services for autostart (OpenRC on Alpine, systemd on Debian-based systems)
 8. Create the workspace directory structure
 9. Install `aserv-*` helper commands system-wide
+10. Restart all managed services at the end, including Cloudflare and the Codex proxy when configured
 
 **Debian-based behaviour, including Raspberry Pi OS:**
 - Node.js 22 LTS installed via NodeSource
@@ -570,7 +578,14 @@ Update all installed components:
 aserv-update
 ```
 
-Updates: Alpine packages, npm globals, Azure CLI, GitHub CLI extensions.
+At the start of `aserv-update` you can choose:
+
+- `A` / `All`: update every supported component
+- `C` / `Choose`: answer `Y` or `N` for system packages, Node/npm, OpenChamber, OpenCode, Codex, the Codex proxy, Azure CLI, GitHub CLI, Cloudflare, .NET, Tailscale, and Rclone
+
+The update selection also applies only to the current run. After the selected updates finish, the command performs a final best-effort restart of all enabled services, including `cloudflared` and `codex-proxy`.
+
+Updates can include Alpine/Debian packages, npm globals, Azure CLI, GitHub CLI extensions, Cloudflare, .NET, Codex CLI, and the Codex proxy.
 
 ---
 

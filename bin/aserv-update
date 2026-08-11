@@ -7,6 +7,49 @@ ver()  { command -v "$1" >/dev/null 2>&1 && "$1" "$2" 2>/dev/null | head -1 || p
 
 if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
 
+UPDATE_MODE=all
+UPDATE_SELECTION=""
+printf '\nUpdate mode: [A]ll components or [C]hoose components? [A]: '
+read UPDATE_MODE_INPUT
+UPDATE_MODE_INPUT="$(printf '%s' "${UPDATE_MODE_INPUT:-A}" | tr -d '\r' | tr '[:lower:]' '[:upper:]')"
+if [ "$UPDATE_MODE_INPUT" = "C" ]; then
+  UPDATE_MODE=choose
+  printf '\nChoose components for this update (Y/N):\n'
+  for component in system node openchamber opencode codex codex_proxy azure github cloudflare dotnet tailscale rclone; do
+    printf '  %-12s [Y]: ' "$component"
+    read answer
+    answer="$(printf '%s' "${answer:-Y}" | tr -d '\r' | tr '[:lower:]' '[:upper:]')"
+    case "$answer" in Y|YES) UPDATE_SELECTION="$UPDATE_SELECTION $component" ;; esac
+  done
+fi
+
+update_enabled() {
+  [ "$UPDATE_MODE" = "all" ] && return 0
+  case " $UPDATE_SELECTION " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
+restart_services() {
+  log "Final service restart"
+  if [ "$OS_ID" = "debian" ]; then
+    for service in ssh openchamber opencode codex-proxy cloudflared tailscaled docker; do
+      if systemctl is-enabled "$service" >/dev/null 2>&1; then
+        systemctl restart "$service" >/dev/null 2>&1 \
+          && printf '  restarted: %s\n' "$service" \
+          || warn "  restart failed: $service"
+      fi
+    done
+  else
+    for service in sshd openchamber opencode codex-proxy cloudflared tailscale docker; do
+      if [ -x "/etc/init.d/$service" ]; then
+        rc-service "$service" restart >/dev/null 2>&1 \
+          && printf '  restarted: %s\n' "$service" \
+          || warn "  restart failed: $service"
+      fi
+    done
+  fi
+}
+
+if update_enabled system; then
 log "System packages"
 if [ "$OS_ID" = "debian" ]; then
   DEBIAN_FRONTEND=noninteractive apt-get update -q && apt-get upgrade -y -q
@@ -15,15 +58,21 @@ else
   apk update && apk upgrade
   printf 'Alpine packages upgraded.\n'
 fi
-
-log "npm global packages"
-if command -v npm >/dev/null 2>&1; then
-  npm update -g || warn "npm global update failed."
-  npm install -g @openchamber/web 2>/dev/null && printf 'openchamber updated\n' || true
-else
-  printf 'npm not installed — skip.\n'
 fi
 
+if update_enabled node || update_enabled openchamber || update_enabled opencode || update_enabled codex_proxy; then
+log "npm global packages"
+if update_enabled node && command -v npm >/dev/null 2>&1; then
+  npm update -g || warn "npm global update failed."
+elif update_enabled node; then
+  printf 'npm not installed — skip.\n'
+fi
+if update_enabled openchamber && command -v npm >/dev/null 2>&1; then
+  npm install -g @openchamber/web 2>/dev/null && printf 'openchamber updated\n' || warn "openchamber update failed."
+fi
+fi
+
+if update_enabled opencode; then
 log "OpenCode"
 _oc_arch="$(uname -m)"
 case "$_oc_arch" in aarch64|arm64) _oc_arch="arm64" ;; *) _oc_arch="x64" ;; esac
@@ -37,7 +86,9 @@ if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -q musl 2>/dev/null)
 else
   npm install -g opencode-ai@latest 2>/dev/null || true
 fi
+fi
 
+if update_enabled azure; then
 log "Azure CLI"
 if command -v az-native >/dev/null 2>&1; then
   /opt/azcli/bin/pip install --upgrade azure-cli \
@@ -48,7 +99,9 @@ elif command -v az >/dev/null 2>&1; then
 else
   printf 'az not installed — skip.\n'
 fi
+fi
 
+if update_enabled github; then
 log "GitHub CLI extensions"
 if command -v gh >/dev/null 2>&1; then
   gh extension upgrade --all || warn "gh extension upgrade failed."
@@ -56,7 +109,9 @@ if command -v gh >/dev/null 2>&1; then
 else
   printf 'gh not installed — skip.\n'
 fi
+fi
 
+if update_enabled cloudflare; then
 log "Cloudflared"
 if command -v cloudflared >/dev/null 2>&1; then
   # Try apk first; if it fails the binary was installed manually → re-download
@@ -78,6 +133,33 @@ if command -v cloudflared >/dev/null 2>&1; then
 else
   printf 'cloudflared not installed — skip.\n'
 fi
+fi
+
+if update_enabled dotnet; then
+log ".NET SDK"
+if [ -x /opt/dotnet/dotnet ]; then
+  /opt/dotnet/dotnet --info | head -20 || warn ".NET update check failed."
+else
+  printf 'dotnet not installed — skip.\n'
+fi
+fi
+
+if update_enabled codex; then
+log "Codex CLI and proxy"
+if command -v codex >/dev/null 2>&1; then
+  curl -fsSL https://chatgpt.com/codex/install.sh | bash || warn "Codex CLI update failed."
+else
+  printf 'codex not installed — skip.\n'
+fi
+fi
+if update_enabled codex_proxy; then
+log "Codex proxy"
+if command -v uv >/dev/null 2>&1; then
+  uv tool upgrade openai-api-server-via-codex || warn "Codex proxy update failed."
+else
+  printf 'uv not installed — skip Codex proxy.\n'
+fi
+fi
 
 log "Versions after update"
 printf '  %-18s %s\n' "node"        "$(ver node --version)"
@@ -88,6 +170,8 @@ printf '  %-18s %s\n' "cloudflared" "$(ver cloudflared --version)"
 printf '  %-18s %s\n' "gh"          "$(ver gh --version)"
 printf '  %-18s %s\n' "dotnet"      "$(ver dotnet --version)"
 printf '  %-18s %s\n' "az"          "$(ver az version)"
+
+restart_services
 
 log "Update complete"
 
