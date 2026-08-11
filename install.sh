@@ -288,9 +288,11 @@ fi
 
 if is_true node; then
   log "Node.js + npm"
+  _node_required=20
+  is_true openchamber && _node_required=22
   if [ "$OS_ID" = "debian" ]; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 || true
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -q nodejs || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q nodejs xz-utils || true
   else
     apk add --no-cache nodejs npm || \
     apk add --no-cache nodejs22 npm || \
@@ -301,9 +303,37 @@ if is_true node; then
   NPM_VER="$(npm -v 2>/dev/null || echo unknown)"
   printf 'Node.js %s / npm %s\n' "$NODE_VER" "$NPM_VER"
   NODE_MAJOR="$(printf '%s' "$NODE_VER" | sed 's/v//;s/\..*//;s/unknown/0/')"
-  if [ "$NODE_MAJOR" -lt 20 ] 2>/dev/null; then
-    warn "Node.js $NODE_VER may be too old. opencode/openchamber require Node 20+."
-    track_fail "node $NODE_VER (too old, need 20+)"
+  if [ "$NODE_MAJOR" -lt "$_node_required" ] 2>/dev/null && [ "$OS_ID" = "debian" ]; then
+    _node_arch="$(uname -m)"
+    case "$_node_arch" in
+      aarch64|arm64) _node_arch="arm64" ;;
+      armv7*|armhf)  _node_arch="armv7l" ;;
+      x86_64|amd64)  _node_arch="x64" ;;
+      *)             _node_arch="" ;;
+    esac
+    if [ -n "$_node_arch" ]; then
+      _node_version="$(curl -fsSL https://nodejs.org/dist/index.json 2>/dev/null | awk -F'"' '/"version":"v22\./ { print $4; exit }')"
+      if [ -n "$_node_version" ]; then
+        _node_url="https://nodejs.org/dist/${_node_version}/node-${_node_version}-linux-${_node_arch}.tar.xz"
+        printf '[node] Current Node.js %s is below required major %s; downloading %s...\n' "$NODE_VER" "$_node_required" "$_node_version"
+        if curl -fsSL "$_node_url" -o /tmp/node.tar.xz 2>/dev/null; then
+          rm -rf /tmp/node22
+          mkdir -p /tmp/node22
+          if tar -xJf /tmp/node.tar.xz -C /tmp/node22 --strip-components=1 2>/dev/null; then
+            cp -a /tmp/node22/. /usr/local/
+            hash -r 2>/dev/null || true
+            NODE_VER="$(node -v 2>/dev/null || echo unknown)"
+            NPM_VER="$(npm -v 2>/dev/null || echo unknown)"
+            NODE_MAJOR="$(printf '%s' "$NODE_VER" | sed 's/v//;s/\..*//;s/unknown/0/')"
+          fi
+          rm -rf /tmp/node22 /tmp/node.tar.xz
+        fi
+      fi
+    fi
+  fi
+  if [ "$NODE_MAJOR" -lt "$_node_required" ] 2>/dev/null; then
+    warn "Node.js $NODE_VER is too old. Required: Node.js $_node_required+."
+    track_fail "node $NODE_VER (too old, need ${_node_required}+)"
   else
     track_ok "node $NODE_VER / npm $NPM_VER"
   fi
@@ -488,10 +518,16 @@ if is_true opencode; then
   case "$_oc_arch" in
     aarch64|arm64) _oc_arch="arm64" ;;
     x86_64)        _oc_arch="x64"   ;;
-    *)             _oc_arch="x64"   ;;
+    armv7*|armhf)  _oc_arch="armv7l" ;;
+    *)             _oc_arch=""      ;;
   esac
 
-  if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -q musl 2>/dev/null); then
+  _oc_musl=0
+  if [ -f /etc/alpine-release ] || ldd --version 2>&1 | grep -q musl; then
+    _oc_musl=1
+  fi
+
+  if [ "$_oc_musl" = "1" ] && [ -n "$_oc_arch" ] && [ "$_oc_arch" != "armv7l" ]; then
     # Alpine/musl: download musl-specific binary
     printf '[opencode] Alpine/musl detected — downloading musl binary (%s)...\n' "$_oc_arch"
     apk add --no-cache tar curl ca-certificates >/dev/null 2>&1 || true
@@ -532,8 +568,12 @@ if is_true opencode; then
     fi
   else
     warn "opencode installation failed. Install manually with:"
-    warn "  curl -fL https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz -o /tmp/oc.tar.gz && tar -xzf /tmp/oc.tar.gz -C /tmp && install -m755 /tmp/opencode /usr/local/bin/opencode"
-    track_fail "opencode: all install methods failed (arch: ${_oc_arch}, musl: yes)"
+    if [ "$_oc_musl" = "1" ] && [ -n "$_oc_arch" ]; then
+      warn "  curl -fL https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz -o /tmp/oc.tar.gz && tar -xzf /tmp/oc.tar.gz -C /tmp && install -m755 /tmp/opencode /usr/local/bin/opencode"
+    else
+      warn "  npm install -g opencode"
+    fi
+    track_fail "opencode: all install methods failed (arch: ${_oc_arch:-unsupported}, musl: ${_oc_musl})"
   fi
 
   ask_if_empty OPENCODE_UI_PASSWORD "OpenCode UI password (Enter to disable auth)"
