@@ -10,7 +10,7 @@ cat <<'HELP'
   SYSTEM
     aserv-status            System overview: OS, services, tools, disk, RAM
     aserv-restart           Restart all managed services
-    aserv-logs <service>    Tail logs  (openchamber | cloudflared | opencode)
+    aserv-logs <service>    Tail logs  (openchamber | codex-proxy | cloudflared | opencode)
 
   UPDATES
     aserv-update            Update everything: OS packages, npm globals, az, gh
@@ -49,6 +49,7 @@ cat <<'HELP'
     /root/logs/openchamber.log
     /root/logs/opencode.log
     /root/logs/cloudflared.log
+    /root/logs/codex-proxy.log
 
   ═══════════════════════════════════════════════════════════════
 

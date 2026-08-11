@@ -115,6 +115,9 @@ The installer will:
 | `AZURE_SUBSCRIPTION_ID` | Default Azure subscription ID | optional |
 | `SSH_PORT` | SSH port | `22` |
 | `OPENCHAMBER_PORT` | OpenChamber local port | `3210` |
+| `CLOUDFLARE_CODEX_HOSTNAME` | Public hostname for the Codex proxy | required when `codex_proxy` is enabled; no default |
+| `CODEX_PROXY_PORT` | Local Codex proxy port | `22000` |
+| `CODEX_PROXY_API_KEY` | API key accepted by the Codex proxy | required when `codex_proxy` is enabled |
 | `TAILSCALE_AUTH_KEY` | Tailscale pre-auth key | optional |
 
 ---

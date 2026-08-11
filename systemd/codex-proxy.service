@@ -1,0 +1,18 @@
+[Unit]
+Description=Codex OpenAI-compatible API proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/codex-proxy
+ExecStartPre=/bin/bash -c '. /etc/default/codex-proxy; test -n "$CODEX_PROXY_API_KEY"'
+ExecStartPre=/bin/test -f /root/.codex/auth.json
+ExecStart=/bin/bash -c '. /etc/default/codex-proxy; exec /usr/local/bin/openai-api-server-via-codex --host 127.0.0.1 --port "$CODEX_PROXY_PORT" --api-key "$CODEX_PROXY_API_KEY"'
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/root/logs/codex-proxy.log
+StandardError=append:/root/logs/codex-proxy.log
+
+[Install]
+WantedBy=multi-user.target

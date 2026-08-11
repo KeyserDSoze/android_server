@@ -74,6 +74,7 @@ CLOUDFLARE_TUNNEL_NAME=""
 CLOUDFLARE_HOSTNAME=""
 CLOUDFLARE_TUNNEL_TOKEN=""
 CLOUDFLARE_SSH_HOSTNAME=""
+CLOUDFLARE_CODEX_HOSTNAME=""
 AZURE_SUBSCRIPTION_ID=""
 SSH_PORT="22"
 OPENCHAMBER_PORT="3210"
@@ -81,6 +82,8 @@ OPENCHAMBER_PASSWORD=""
 OPENCODE_UI_PASSWORD=""
 OPENCODE_PORT="3000"
 OPENCODE_HOSTNAME="0.0.0.0"
+CODEX_PROXY_PORT="22000"
+CODEX_PROXY_API_KEY=""
 TAILSCALE_AUTH_KEY=""
 REINSTALL_CLOUDFLARE=0  # set by prompt below
 
@@ -545,15 +548,14 @@ if is_true opencode; then
     fi
   fi
 
-  # Fallback: npm (works on glibc systems, often fails on musl)
-  if [ $_ocode_ok -eq 0 ] && command -v npm >/dev/null 2>&1; then
+  # Fallback: official npm package (the package is opencode-ai, not opencode).
+  if [ $_ocode_ok -eq 0 ] && [ "$_oc_arch" != "armv7l" ] && command -v npm >/dev/null 2>&1; then
     printf '[opencode] Trying npm...\n'
-    npm install -g opencode 2>/dev/null && _ocode_ok=1 || \
-    npm install -g opencode-ai 2>/dev/null && _ocode_ok=1 || true
+    npm install -g opencode-ai@latest 2>/dev/null && _ocode_ok=1 || true
   fi
 
   # Fallback: official install script (handles its own detection)
-  if [ $_ocode_ok -eq 0 ]; then
+  if [ $_ocode_ok -eq 0 ] && [ "$_oc_arch" != "armv7l" ]; then
     printf '[opencode] Trying official install script...\n'
     curl -fsSL https://opencode.ai/install | sh 2>/dev/null && _ocode_ok=1 || true
   fi
@@ -568,10 +570,13 @@ if is_true opencode; then
     fi
   else
     warn "opencode installation failed. Install manually with:"
-    if [ "$_oc_musl" = "1" ] && [ -n "$_oc_arch" ]; then
+    if [ "$_oc_arch" = "armv7l" ]; then
+      warn "  OpenCode does not publish an ARMv7 binary. Raspberry Pi 2 is not supported by the official OpenCode releases."
+      warn "  Use a Raspberry Pi 4/5 64-bit OS, or disable opencode in aserv.yaml."
+    elif [ "$_oc_musl" = "1" ] && [ -n "$_oc_arch" ]; then
       warn "  curl -fL https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz -o /tmp/oc.tar.gz && tar -xzf /tmp/oc.tar.gz -C /tmp && install -m755 /tmp/opencode /usr/local/bin/opencode"
     else
-      warn "  npm install -g opencode"
+      warn "  npm install -g opencode-ai@latest"
     fi
     track_fail "opencode: all install methods failed (arch: ${_oc_arch:-unsupported}, musl: ${_oc_musl})"
   fi
@@ -647,6 +652,32 @@ else
   track_skip "dotnet"
 fi
 
+if is_true codex; then
+  log "Codex CLI + API proxy"
+  sh "$BASE_DIR/modules/codex.sh" \
+    && track_ok "codex and openai-api-server-via-codex installed" \
+    || { warn "Codex components require manual setup; check the log above."; track_fail "codex: install failed"; }
+
+  if is_true codex_proxy; then
+    mkdir -p "$CONF_DIR"
+    cat > "$CONF_DIR/codex-proxy" <<CFG
+CODEX_PROXY_PORT="${CODEX_PROXY_PORT:-22000}"
+CODEX_PROXY_API_KEY="$CODEX_PROXY_API_KEY"
+CFG
+    printf 'Codex proxy config written (%s, port %s)\n' "$CONF_DIR/codex-proxy" "${CODEX_PROXY_PORT:-22000}"
+    if [ -z "$CLOUDFLARE_CODEX_HOSTNAME" ]; then
+      warn "CLOUDFLARE_CODEX_HOSTNAME is empty; configure the Cloudflare hostname manually before exposing port ${CODEX_PROXY_PORT:-22000}."
+      track_fail "codex proxy: Cloudflare hostname not configured"
+    fi
+  else
+    printf '[skip] codex_proxy disabled in aserv.yaml\n'
+    track_skip "codex API proxy"
+  fi
+else
+  printf '[skip] codex disabled in aserv.yaml\n'
+  track_skip "codex"
+fi
+
 if is_true llm; then
   log "LLM tools: llama.cpp prerequisites"
   if [ "$OS_ID" = "debian" ]; then
@@ -698,6 +729,18 @@ if is_true services; then
     fi
   fi
   # opencode service is registered inside the opencode block above (only if binary installed)
+  if is_true codex && is_true codex_proxy && command -v openai-api-server-via-codex >/dev/null 2>&1; then
+    install_service "$BASE_DIR/openrc/codex-proxy"
+    if [ -n "$CODEX_PROXY_API_KEY" ] && [ -f /root/.codex/auth.json ]; then
+      svc_start codex-proxy \
+        && printf '  codex-proxy started OK (port %s)\n' "${CODEX_PROXY_PORT:-22000}" \
+        || warn "codex-proxy service failed to start — configure Codex login and check logs"
+      track_ok "service: codex-proxy started (port ${CODEX_PROXY_PORT:-22000})"
+    else
+      warn "codex-proxy installed but not started: configure API key and run 'codex login --device-auth'."
+      track_fail "service: codex-proxy not started (manual authentication/configuration required)"
+    fi
+  fi
 else
   printf '[skip] services disabled in aserv.yaml\n'
   track_skip "OpenRC services"
@@ -735,8 +778,9 @@ log "Installation complete"
 printf '%s\n' "Next steps:" \
   "  1) aserv-setup-cloudflare" \
   "  2) aserv-auth" \
-  "  3) aserv-status" \
-  "  4) Access OpenChamber at your configured domain or locally at port ${OPENCHAMBER_PORT}"
+  "  3) codex login --device-auth (if Codex is enabled)" \
+  "  4) aserv-status" \
+  "  5) Access OpenChamber at your configured domain or locally at port ${OPENCHAMBER_PORT}"
 
 # ────────────────────────────────────────────────────────────────
 printf '\n'

@@ -61,9 +61,8 @@ if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -q musl 2>/dev/null)
 else
   # glibc: try npm
   if command -v npm >/dev/null 2>&1; then
-    npm install -g opencode 2>/dev/null \
-      || npm install -g opencode-ai 2>/dev/null \
-      || warn "opencode npm update failed."
+    npm install -g opencode-ai@latest 2>/dev/null \
+      || warn "opencode-ai npm update failed."
     command -v opencode >/dev/null 2>&1 && ok "opencode: $(opencode --version 2>/dev/null | head -1 || echo ok)"
   else
     warn "npm not found — skipping opencode update."

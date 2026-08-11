@@ -1,0 +1,26 @@
+#!/sbin/openrc-run
+name="codex-proxy"
+description="Codex OpenAI-compatible API proxy"
+command="/usr/bin/tmux"
+command_args="new-session -d -s codex-proxy 'openai-api-server-via-codex --host 127.0.0.1 --port ${CODEX_PROXY_PORT:-22000} --api-key \"${CODEX_PROXY_API_KEY:-}\" >> /root/logs/codex-proxy.log 2>&1'"
+command_background=false
+
+start_pre() {
+  mkdir -p /root/logs
+  if [ -z "${CODEX_PROXY_API_KEY:-}" ]; then
+    eerror "CODEX_PROXY_API_KEY is not configured"
+    return 1
+  fi
+  if [ ! -f /root/.codex/auth.json ]; then
+    eerror "Codex auth missing: run 'codex login --device-auth'"
+    return 1
+  fi
+  if tmux has-session -t codex-proxy 2>/dev/null; then
+    eend 0
+    return 1
+  fi
+}
+
+stop() {
+  tmux kill-session -t codex-proxy 2>/dev/null || true
+}

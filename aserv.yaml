@@ -6,6 +6,8 @@ dotnet: true
 cloudflare: true
 opencode: true
 openchamber: true
+codex: true
+codex_proxy: true
 ssh: true
 docker: true
 podman: true

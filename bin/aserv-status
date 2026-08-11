@@ -17,7 +17,7 @@ printf 'OS:       %s\n' "$OS_ID"
 printf 'Hostname: '; cat /etc/aserv/hostname 2>/dev/null || echo 'not configured'
 printf 'Tunnel:   '; cat /etc/aserv/tunnel-name 2>/dev/null || echo 'not configured'
 printf '\nServices:\n'
-for s in sshd ssh docker tailscale openchamber cloudflared opencode; do
+for s in sshd ssh docker tailscale openchamber cloudflared opencode codex-proxy; do
   printf '  %-14s ' "$s"
   if [ "$OS_ID" = "debian" ]; then
     systemctl is-active "$s" 2>/dev/null || echo inactive
@@ -26,7 +26,7 @@ for s in sshd ssh docker tailscale openchamber cloudflared opencode; do
   fi
 done
 printf '\nTools:\n'
-for c in git gh az node npm python3 cloudflared opencode openchamber docker podman rclone tailscale tmux; do
+for c in git gh az node npm python3 cloudflared opencode openchamber codex openai-api-server-via-codex docker podman rclone tailscale tmux; do
   printf '  %-14s ' "$c"
   command -v "$c" >/dev/null 2>&1 && echo OK || echo MISSING
 done

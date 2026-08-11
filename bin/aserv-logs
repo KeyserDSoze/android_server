@@ -2,6 +2,7 @@
 SERVICE="${1:-openchamber}"
 case "$SERVICE" in
   openchamber) tail -n 200 -f /root/logs/openchamber.log ;;
+  codex-proxy) tail -n 200 -f /root/logs/codex-proxy.log ;;
   cloudflared) tail -n 200 -f /root/logs/cloudflared.log ;;
-  *) echo "Usage: aserv-logs openchamber|cloudflared"; exit 1 ;;
+  *) echo "Usage: aserv-logs openchamber|codex-proxy|cloudflared"; exit 1 ;;
 esac

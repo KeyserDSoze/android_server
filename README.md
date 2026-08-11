@@ -98,7 +98,7 @@ Raspberry Pi OS **64-bit or 32-bit** can run the Debian branch of the installer.
 - Internet connection
 - A user with `sudo` access, or a root shell
 
-Cloudflared provides an ARM binary fallback for ARMv7 systems. OpenCode and OpenChamber availability depends on the Node.js/npm packages and architecture; the installer reports any component that cannot be installed.
+Cloudflared provides an ARM binary fallback for ARMv7 systems. OpenChamber can run through Node.js on ARMv7, subject to its package dependencies. The official OpenCode releases currently publish Linux binaries for x64 and ARM64, not ARMv7; on a Raspberry Pi 2 the installer reports OpenCode as unsupported instead of attempting an invalid npm package.
 
 ## Ubuntu Server / Debian Requirements
 
@@ -218,6 +218,8 @@ azure: true
 cloudflare: true
 opencode: true
 openchamber: true
+codex: true
+codex_proxy: true
 ssh: true
 docker: false
 podman: false
@@ -287,6 +289,8 @@ The installer then:
 5. Loads its values and prompts only for variables that are still empty
 
 The password requested here is the encryption password, not the Cloudflare token or the OpenCode/OpenChamber UI password. If the password is wrong, the installer stops with a decryption error. Choose `0` when you want to skip the profile and enter values manually.
+
+The Codex proxy hostname is intentionally not given a default. Set `CLOUDFLARE_CODEX_HOSTNAME` in the profile when `codex_proxy` is enabled. The proxy API key is configured separately with `CODEX_PROXY_API_KEY`; it protects incoming API requests and is not the same as the Codex OAuth session in `~/.codex/auth.json`.
 
 ---
 
@@ -362,6 +366,86 @@ The installer will:
 - Services managed with OpenRC
 - Config written to `/etc/conf.d/`
 - A token-based Cloudflare profile is saved to `/etc/aserv/cloudflare-token`
+
+---
+
+## Codex CLI and OpenAI-Compatible Proxy
+
+Codex and the proxy are separate components:
+
+```text
+Client / SDK
+    |
+    v
+openai-api-server-via-codex :22000
+    |
+    v
+Codex CLI + ~/.codex/auth.json
+    |
+    v
+OpenAI Codex backend
+```
+
+Enable both features in `aserv.yaml`:
+
+```yaml
+codex: true
+codex_proxy: true
+```
+
+Configure these values in the encrypted profile:
+
+```sh
+CLOUDFLARE_CODEX_HOSTNAME="codex.example.com"
+CODEX_PROXY_PORT="22000"
+CODEX_PROXY_API_KEY="replace-with-a-long-random-api-key"
+```
+
+`CLOUDFLARE_CODEX_HOSTNAME` has no default and must be set explicitly. For a dashboard-managed Cloudflare Tunnel, add a Public Hostname manually:
+
+```text
+Hostname: codex.example.com
+Service:  HTTP
+URL:      http://127.0.0.1:22000
+```
+
+For a locally managed tunnel, `aserv-setup-cloudflare` adds the configured Codex hostname automatically.
+
+The installer installs Codex CLI and `openai-api-server-via-codex`, but never performs an OAuth login automatically. After installation, authenticate Codex:
+
+```sh
+codex login
+# On a headless server:
+codex login --device-auth
+```
+
+Verify the session and proxy:
+
+```sh
+ls -la ~/.codex/auth.json
+codex --version
+codex exec "scrivi solo OK"
+curl -H "Authorization: Bearer $CODEX_PROXY_API_KEY" \
+  "http://127.0.0.1:22000/healthz"
+aserv-status
+```
+
+The proxy service starts automatically only when `CODEX_PROXY_API_KEY` and `~/.codex/auth.json` are present. If the Codex token is missing, expired, or cannot be refreshed, the proxy refuses to bind or exits; re-run `codex login` manually and restart it:
+
+```sh
+# Debian/Raspberry Pi OS
+sudo systemctl restart codex-proxy
+
+# Alpine Linux
+rc-service codex-proxy restart
+```
+
+The API key used by clients is the value configured in `CODEX_PROXY_API_KEY`:
+
+```sh
+export OPENAI_BASE_URL="https://codex.example.com/v1"
+export OPENAI_API_KEY="replace-with-a-long-random-api-key"
+```
 
 ---
 

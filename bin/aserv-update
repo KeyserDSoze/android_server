@@ -35,7 +35,7 @@ if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -q musl 2>/dev/null)
     && printf 'opencode updated (musl binary)\n' || warn "opencode musl update failed."
   rm -f /tmp/opencode.tar.gz /tmp/opencode
 else
-  npm install -g opencode 2>/dev/null || npm install -g opencode-ai 2>/dev/null || true
+  npm install -g opencode-ai@latest 2>/dev/null || true
 fi
 
 log "Azure CLI"

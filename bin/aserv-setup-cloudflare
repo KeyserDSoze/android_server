@@ -33,6 +33,11 @@ if [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
     printf '        ProxyCommand cloudflared access ssh --hostname %%h\n'
     printf '        User root\n'
   fi
+  if [ -n "${CLOUDFLARE_CODEX_HOSTNAME:-}" ]; then
+    printf '    %-30s service: HTTP   url: localhost:%s\n' "$CLOUDFLARE_CODEX_HOSTNAME" "${CODEX_PROXY_PORT:-22000}"
+  else
+    printf '    Codex hostname: not configured (set CLOUDFLARE_CODEX_HOSTNAME manually)\n'
+  fi
   exit 0
 fi
 # ─────────────────────────────────────────────────────────────────────────
@@ -83,7 +88,9 @@ INGRESS="  - hostname: $HOSTNAME\n    service: http://127.0.0.1:${CF_PORT}"
 if [ -n "${SSH_HOST:-}" ]; then
   INGRESS="$INGRESS\n  - hostname: $SSH_HOST\n    service: ssh://127.0.0.1:${SSH_PORT:-22}"
 fi
-
+if [ -n "${CLOUDFLARE_CODEX_HOSTNAME:-}" ]; then
+  INGRESS="$INGRESS\n  - hostname: $CLOUDFLARE_CODEX_HOSTNAME\n    service: http://127.0.0.1:${CODEX_PROXY_PORT:-22000}"
+fi
 printf "tunnel: %s\ncredentials-file: %s\n\ningress:\n%b\n  - service: http_status:404\n" \
   "$TUNNEL" "$CRED" "$INGRESS" > /root/.cloudflared/config.yml
 
@@ -92,6 +99,9 @@ printf '%s\n' "$HOSTNAME" > /etc/aserv/hostname
 cloudflared tunnel route dns "$TUNNEL" "$HOSTNAME" || true
 if [ -n "${SSH_HOST:-}" ]; then
   cloudflared tunnel route dns "$TUNNEL" "$SSH_HOST" || true
+fi
+if [ -n "${CLOUDFLARE_CODEX_HOSTNAME:-}" ]; then
+  cloudflared tunnel route dns "$TUNNEL" "$CLOUDFLARE_CODEX_HOSTNAME" || true
 fi
 rc-service cloudflared restart || true
 
