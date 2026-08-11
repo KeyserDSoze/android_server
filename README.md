@@ -1,6 +1,6 @@
 # Android Server
 
-Transform any Android smartphone **or Ubuntu server** into a persistent Linux development server using **Cloudflare Tunnel**, **OpenChamber**, **OpenCode**, and a full developer toolchain.
+Transform any Android smartphone, Raspberry Pi, or Linux server into a persistent Linux development server using **Cloudflare Tunnel**, **OpenChamber**, **OpenCode**, and a full developer toolchain.
 
 Repository:
 
@@ -15,8 +15,10 @@ git clone https://github.com/KeyserDSoze/android_server.git
 | Platform | Init system | Package manager | Status |
 |---|---|---|---|
 | Android + Podroid (Alpine Linux) | OpenRC | apk | Fully supported |
+| Raspberry Pi OS (Debian) | systemd | apt | Supported |
 | Ubuntu Server 22.04 / 24.04 | systemd | apt | Fully supported |
 | Debian 12+ | systemd | apt | Supported |
+| Other Debian-based Linux distributions | systemd | apt | Best effort |
 
 ---
 
@@ -86,7 +88,19 @@ The existing Android installation is untouched.
 
 ---
 
-## Ubuntu Server Requirements
+## Raspberry Pi OS Requirements
+
+Raspberry Pi OS **64-bit or 32-bit** can run the Debian branch of the installer. For a Raspberry Pi 2, use a lightweight Raspberry Pi OS installation and expect slower package and npm builds.
+
+- Raspberry Pi OS Lite recommended
+- Raspberry Pi 2 or newer
+- At least 1 GB free RAM and 8 GB free disk space; more is recommended
+- Internet connection
+- A user with `sudo` access, or a root shell
+
+Cloudflared provides an ARM binary fallback for ARMv7 systems. OpenCode and OpenChamber availability depends on the Node.js/npm packages and architecture; the installer reports any component that cannot be installed.
+
+## Ubuntu Server / Debian Requirements
 
 Any machine (physical, VM, VPS, mini PC) with:
 
@@ -162,9 +176,32 @@ apk add git
 
 ## Clone This Repository
 
-On any platform:
+Run the commands for the Linux distribution installed on the machine. Git must be installed before cloning the repository.
+
+### Raspberry Pi OS, Ubuntu, Debian, and other Debian-based distributions
 
 ```sh
+sudo apt-get update
+sudo apt-get install -y git ca-certificates curl openssl
+git clone https://github.com/KeyserDSoze/android_server.git
+cd android_server
+```
+
+If `sudo` is not installed, become root first and omit `sudo`:
+
+```sh
+su -
+apt-get update
+apt-get install -y git ca-certificates curl openssl
+git clone https://github.com/KeyserDSoze/android_server.git
+cd android_server
+```
+
+### Alpine Linux
+
+```sh
+apk update
+apk add git ca-certificates curl openssl
 git clone https://github.com/KeyserDSoze/android_server.git
 cd android_server
 ```
@@ -229,42 +266,102 @@ See [docs/secrets-config.md](docs/secrets-config.md) for the full guide and vari
 
 If you skip this step, the installer will prompt for each value interactively.
 
----
+### Using an existing encrypted profile
 
-## Installation
-
-`install.sh` detects the OS automatically and uses the correct package manager and init system.
-
-### On Android/Alpine (inside Podroid VM)
+If a profile such as `config/raspi.enc`, `config/nipogi.enc`, or `config/blade20play.enc` is already present in the repository, do not copy the plaintext file to the server. Start the installer and select the profile when it displays the list:
 
 ```sh
+# Debian-based systems, including Raspberry Pi OS
+sudo bash install.sh
+
+# Alpine Linux, as root
 sh install.sh
 ```
 
-### On Ubuntu Server / Debian
+The installer then:
+
+1. Shows the available files in `config/*.enc`
+2. Asks which profile to load
+3. Requests the `CONFIG_PASSWORD` used to create that profile
+4. Decrypts the profile only in a temporary file
+5. Loads its values and prompts only for variables that are still empty
+
+The password requested here is the encryption password, not the Cloudflare token or the OpenCode/OpenChamber UI password. If the password is wrong, the installer stops with a decryption error. Choose `0` when you want to skip the profile and enter values manually.
+
+---
+
+## Installation by Linux Distribution
+
+`install.sh` detects the OS automatically and uses the correct package manager and init system.
+
+### Raspberry Pi OS
+
+Raspberry Pi OS uses the Debian/systemd branch. From the cloned repository:
 
 ```sh
 sudo bash install.sh
 ```
 
+When prompted, select `raspi` and enter the password used to create `config/raspi.enc`. The profile supplies the configured Cloudflare hostnames, tunnel token, ports, and service passwords. The installer continues with package installation and service setup.
+
+### Ubuntu Server and Debian
+
+These distributions use the same Debian/systemd branch:
+
+```sh
+sudo bash install.sh
+```
+
+Select the matching `.enc` profile when prompted, or choose `0` to configure values interactively.
+
+### Alpine Linux (including Android/Alpine inside Podroid)
+
+```sh
+sh install.sh
+```
+
+Run it from a root shell. Alpine uses `apk` and OpenRC instead of `apt` and systemd.
+
+Select the matching encrypted profile and enter its encryption password when prompted.
+
+### Other Linux distributions
+
+The installer has explicit support for Alpine and Debian/Ubuntu. Other distributions are not automatically guaranteed because package names, init systems, and OS detection can differ. Check the system before installing:
+
+```sh
+cat /etc/os-release
+uname -m
+```
+
+If the distribution is not Debian-based or Alpine, use a supported base distribution or adapt the package and service commands before running the installer.
+
+### What happens after starting the installer
+
 The installer will:
 
-1. Detect the OS (Alpine or Ubuntu/Debian)
+1. Detect the OS and select the package manager (`apk` or `apt-get`)
 2. List available encrypted config profiles and offer to load one
-3. Update packages (`apk` or `apt-get`)
-4. Install all enabled components from `aserv.yaml`
-5. Configure git user (from profile or interactively)
-6. Register services for autostart (OpenRC on Alpine, systemd on Ubuntu)
-7. Create the workspace directory structure
-8. Install `aserv-*` helper commands system-wide
+3. Request the profile password and decrypt the selected `.enc` file temporarily
+4. Update packages (`apk` or `apt-get`)
+5. Install all enabled components from `aserv.yaml`
+6. Configure git user (from profile or interactively)
+7. Register services for autostart (OpenRC on Alpine, systemd on Debian-based systems)
+8. Create the workspace directory structure
+9. Install `aserv-*` helper commands system-wide
 
-**Ubuntu-specific behaviour:**
+**Debian-based behaviour, including Raspberry Pi OS:**
 - Node.js 22 LTS installed via NodeSource
 - GitHub CLI installed via official apt repository
 - cloudflared installed via Cloudflare apt repository
 - `cloudflared service install <token>` configures systemd automatically
 - Services managed via `systemctl` (openchamber, opencode)
 - Config written to `/etc/default/` instead of `/etc/conf.d/`
+
+**Alpine behaviour:**
+- Packages installed with `apk`
+- Services managed with OpenRC
+- Config written to `/etc/conf.d/`
+- A token-based Cloudflare profile is saved to `/etc/aserv/cloudflare-token`
 
 ---
 
@@ -582,19 +679,33 @@ apk update && apk add git
 git clone https://github.com/KeyserDSoze/android_server.git
 cd android_server
 sh install.sh
+# Select the matching .enc profile and enter its encryption password
 aserv-setup-cloudflare
 aserv-auth
 aserv-status
 ```
 
-## Quick Start — Ubuntu Server (TL;DR)
+## Quick Start — Raspberry Pi OS (TL;DR)
 
 ```sh
-apt-get update && apt-get install -y git
+sudo apt-get update
+sudo apt-get install -y git ca-certificates curl openssl
 git clone https://github.com/KeyserDSoze/android_server.git
 cd android_server
 sudo bash install.sh
-# cloudflare tunnel is configured automatically from the config profile
+# Select raspi and enter the password for config/raspi.enc
+aserv-auth
+aserv-status
+```
+
+## Quick Start — Ubuntu Server / Debian (TL;DR)
+
+```sh
+apt-get update && apt-get install -y git ca-certificates curl openssl
+git clone https://github.com/KeyserDSoze/android_server.git
+cd android_server
+sudo bash install.sh
+# Select the matching .enc profile and enter its encryption password
 aserv-auth
 aserv-status
 ```
