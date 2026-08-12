@@ -21,6 +21,13 @@ ensure_codex_path() {
 export PATH="/usr/local/bin:$CODEX_LOCAL_BIN:\$PATH"
 PROFILE
   fi
+  if [ -d /etc/profile.d ]; then
+    cat > /etc/profile.d/aserv-codex.sh <<PROFILE
+# aserv Codex PATH
+export PATH="/usr/local/bin:$CODEX_LOCAL_BIN:\$PATH"
+PROFILE
+    chmod 0644 /etc/profile.d/aserv-codex.sh
+  fi
 }
 
 codex_version_ok() {
@@ -81,13 +88,21 @@ install_codex_cli() {
 
 log "Codex CLI"
 install_codex_cli || true
-if [ ! -x "$CODEX_BIN" ] && [ -x "$CODEX_LOCAL_BIN/codex" ]; then
-  ln -sf "$CODEX_LOCAL_BIN/codex" "$CODEX_BIN"
+if [ ! -x "$CODEX_BIN" ]; then
+  for _codex_candidate in \
+    "$CODEX_LOCAL_BIN/codex" \
+    /root/.local/bin/codex \
+    /home/*/.local/bin/codex; do
+    if [ -x "$_codex_candidate" ]; then
+      ln -sf "$_codex_candidate" "$CODEX_BIN"
+      break
+    fi
+  done
 fi
 ensure_codex_path
 
 if ! codex_version_ok; then
-  warn "Codex CLI is not usable at $CODEX_BIN. Check the installer output and run: ls -l /usr/local/bin/codex /root/.local/bin/codex"
+  warn "Codex CLI is not usable at $CODEX_BIN. Installation is incomplete; check: ls -l /usr/local/bin/codex /root/.local/bin/codex /home/*/.local/bin/codex"
   _codex_cli_ok=0
 else
   _codex_cli_ok=1

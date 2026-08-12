@@ -430,11 +430,12 @@ codex login
 codex login --device-auth
 ```
 
-The installer places the canonical CLI at `/usr/local/bin/codex` and configures that path for the account running the installer. On a system service installation this is normally `root`, regardless of whether the distribution uses systemd or OpenRC. If a new shell still reports `codex: command not found`, check the installation directly:
+The installer places the canonical CLI at `/usr/local/bin/codex` and configures that path for the account running the installer plus `/etc/profile.d/aserv-codex.sh` for all login shells. On a system service installation this is normally `root`, regardless of whether the distribution uses systemd or OpenRC. If a new shell still reports `codex: command not found`, check the installation directly:
 
 ```sh
 sudo ls -l /usr/local/bin/codex /root/.local/bin/codex
 sudo /usr/local/bin/codex --version
+sudo cat /etc/profile.d/aserv-codex.sh
 ```
 
 ### Slow or unstable network during Codex installation
