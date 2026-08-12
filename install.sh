@@ -740,6 +740,13 @@ mkdir -p /usr/local/lib/aserv
 if [ -f "$BASE_DIR/modules/codex.sh" ]; then
   install -m 0755 "$BASE_DIR/modules/codex.sh" /usr/local/lib/aserv/codex.sh
 fi
+mkdir -p /usr/local/lib/aserv/systemd /usr/local/lib/aserv/openrc
+for _service_file in "$BASE_DIR"/systemd/*.service; do
+  [ -f "$_service_file" ] && install -m 0644 "$_service_file" /usr/local/lib/aserv/systemd/
+done
+for _service_file in "$BASE_DIR"/openrc/*; do
+  [ -f "$_service_file" ] && install -m 0755 "$_service_file" /usr/local/lib/aserv/openrc/
+done
 for f in "$BASE_DIR"/bin/*; do
   if [ -f "$f" ]; then
     copy_bin "$f"

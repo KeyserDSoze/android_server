@@ -7,6 +7,7 @@ ver()  { command -v "$1" >/dev/null 2>&1 && "$1" "$2" 2>/dev/null | head -1 || p
 
 if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
 ASERV_REPO_DIR="${ASERV_REPO_DIR:-$PWD}"
+ASERV_SERVICE_DIR="/usr/local/lib/aserv"
 
 UPDATE_MODE=all
 UPDATE_SELECTION=""
@@ -53,16 +54,20 @@ restart_services() {
 sync_service_definitions() {
   if [ "$OS_ID" = "debian" ]; then
     for service_file in openchamber.service opencode.service codex-proxy.service; do
-      if [ -f "$ASERV_REPO_DIR/systemd/$service_file" ]; then
-        install -m 0644 "$ASERV_REPO_DIR/systemd/$service_file" "/etc/systemd/system/$service_file"
+      _source_file="$ASERV_REPO_DIR/systemd/$service_file"
+      [ -f "$_source_file" ] || _source_file="$ASERV_SERVICE_DIR/systemd/$service_file"
+      if [ -f "$_source_file" ]; then
+        install -m 0644 "$_source_file" "/etc/systemd/system/$service_file"
         printf '  updated systemd unit: %s\n' "$service_file"
       fi
     done
     systemctl daemon-reload
   else
     for service_file in openchamber opencode codex-proxy cloudflared; do
-      if [ -f "$ASERV_REPO_DIR/openrc/$service_file" ]; then
-        install -m 0755 "$ASERV_REPO_DIR/openrc/$service_file" "/etc/init.d/$service_file"
+      _source_file="$ASERV_REPO_DIR/openrc/$service_file"
+      [ -f "$_source_file" ] || _source_file="$ASERV_SERVICE_DIR/openrc/$service_file"
+      if [ -f "$_source_file" ]; then
+        install -m 0755 "$_source_file" "/etc/init.d/$service_file"
         printf '  updated OpenRC service: %s\n' "$service_file"
       fi
     done

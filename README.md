@@ -832,6 +832,8 @@ ls -la "$(npm root -g)/opencode-ai"
 
 If OpenCode works in an interactive shell but `opencode.service` exits with status `127`, systemd is not seeing the npm global binary in its `PATH`. The service searches `/usr/local/bin`, `/usr/bin`, `/bin`, and `/root/.local/bin` with `command -v`, so it works whether npm installed the command in `/usr/bin` or `/usr/local/bin`.
 
+Service definitions are also cached under `/usr/local/lib/aserv/` during installation. This lets `aserv-update` synchronize systemd/OpenRC units even when it is launched from the user's home directory instead of from the repository.
+
 ### Azure CLI not working
 
 ```sh
