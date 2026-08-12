@@ -730,6 +730,10 @@ else
 fi
 
 log "Installing aserv-* commands"
+mkdir -p /usr/local/lib/aserv
+if [ -f "$BASE_DIR/modules/codex.sh" ]; then
+  install -m 0755 "$BASE_DIR/modules/codex.sh" /usr/local/lib/aserv/codex.sh
+fi
 for f in "$BASE_DIR"/bin/*; do
   if [ -f "$f" ]; then
     copy_bin "$f"

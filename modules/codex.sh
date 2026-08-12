@@ -8,6 +8,7 @@ CODEX_BIN="/usr/local/bin/codex"
 PROXY_BIN="/usr/local/bin/openai-api-server-via-codex"
 UV_BIN="/usr/local/bin/uv"
 UVX_BIN="/usr/local/bin/uvx"
+export PATH="/root/.local/bin:/usr/local/bin:$PATH"
 
 install_codex_cli() {
   _codex_arch="$(uname -m 2>/dev/null || echo unknown)"
@@ -28,7 +29,8 @@ install_codex_cli() {
   while [ "$_codex_attempt" -le 3 ]; do
     printf '[codex] Installation attempt %s/3 (asset timeout is 300 seconds)...\n' "$_codex_attempt"
     if [ "$_codex_attempt" -eq 1 ]; then
-      if CODEX_NON_INTERACTIVE=true CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=true \
+        if CODEX_NON_INTERACTIVE=true CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=true \
+          CODEX_INSTALL_DIR=/usr/local/bin \
           bash "$_codex_installer"; then
         rm -f "$_codex_installer"
         trap - EXIT HUP INT TERM
@@ -36,7 +38,8 @@ install_codex_cli() {
       fi
       warn "OpenAI release download failed; the next attempt will use GitHub Releases."
     else
-      if CODEX_NON_INTERACTIVE=true CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false \
+        if CODEX_NON_INTERACTIVE=true CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false \
+          CODEX_INSTALL_DIR=/usr/local/bin \
           bash "$_codex_installer"; then
         rm -f "$_codex_installer"
         trap - EXIT HUP INT TERM
@@ -52,20 +55,22 @@ install_codex_cli() {
   return 1
 }
 
-if ! command -v codex >/dev/null 2>&1; then
-  log "Codex CLI"
-  install_codex_cli || true
-  if [ -x /root/.local/bin/codex ]; then
-    ln -sf /root/.local/bin/codex "$CODEX_BIN"
-  fi
+log "Codex CLI"
+install_codex_cli || true
+if [ -x /root/.local/bin/codex ] && [ ! -x "$CODEX_BIN" ]; then
+  ln -sf /root/.local/bin/codex "$CODEX_BIN"
 fi
 
 if ! command -v codex >/dev/null 2>&1; then
   warn "Codex CLI was not installed. Authenticate manually after checking the supported architecture."
-  exit 1
+  _codex_cli_ok=0
+else
+  _codex_cli_ok=1
 fi
 
-printf 'codex: %s\n' "$(codex --version 2>/dev/null || echo installed)"
+if [ "${_codex_cli_ok:-0}" = "1" ]; then
+  printf 'codex: %s\n' "$(codex --version 2>/dev/null || echo installed)"
+fi
 
 if ! command -v uv >/dev/null 2>&1; then
   log "uv"
@@ -76,6 +81,7 @@ if ! command -v uv >/dev/null 2>&1; then
   if [ -x /root/.local/bin/uvx ]; then
     ln -sf /root/.local/bin/uvx "$UVX_BIN"
   fi
+  export PATH="/root/.local/bin:/usr/local/bin:$PATH"
 fi
 
 if ! command -v uvx >/dev/null 2>&1; then
@@ -95,3 +101,6 @@ if ! command -v openai-api-server-via-codex >/dev/null 2>&1; then
 fi
 
 printf 'openai-api-server-via-codex: %s\n' "$(openai-api-server-via-codex --version 2>/dev/null || echo installed)"
+if [ "${_codex_cli_ok:-0}" != "1" ]; then
+  warn "Codex CLI is unavailable; the proxy is installed but requires a working Codex CLI and login before it can serve requests."
+fi

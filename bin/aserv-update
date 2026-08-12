@@ -144,20 +144,18 @@ else
 fi
 fi
 
-if update_enabled codex; then
+if update_enabled codex || update_enabled codex_proxy; then
 log "Codex CLI and proxy"
-if command -v codex >/dev/null 2>&1; then
-  curl -fsSL https://chatgpt.com/codex/install.sh | bash || warn "Codex CLI update failed."
-else
-  printf 'codex not installed — skip.\n'
+_codex_module="/usr/local/lib/aserv/codex.sh"
+if [ ! -x "$_codex_module" ] && [ -x "./modules/codex.sh" ]; then
+  _codex_module="./modules/codex.sh"
 fi
-fi
-if update_enabled codex_proxy; then
-log "Codex proxy"
-if command -v uv >/dev/null 2>&1; then
-  uv tool upgrade openai-api-server-via-codex || warn "Codex proxy update failed."
+if [ -x "$_codex_module" ]; then
+  "$_codex_module" \
+    && printf 'Codex CLI and proxy updated\n' \
+    || warn "Codex CLI or proxy update failed; inspect the component output above."
 else
-  printf 'uv not installed — skip Codex proxy.\n'
+  warn "Codex module is not installed; run 'sh modules/codex.sh' from the repository, then rerun aserv-update."
 fi
 fi
 

@@ -419,7 +419,7 @@ URL:      http://127.0.0.1:22000
 
 For a locally managed tunnel, `aserv-setup-cloudflare` adds the configured Codex hostname automatically.
 
-The installer installs Codex CLI and `openai-api-server-via-codex`, but never performs an OAuth login automatically. After installation, authenticate Codex:
+The installer installs Codex CLI and `openai-api-server-via-codex` independently. A Codex CLI download failure does not skip the proxy installation; the proxy is installed whenever `uv` and Python package installation succeed. The installer never performs an OAuth login automatically. After installation, authenticate Codex:
 
 ```sh
 codex login
@@ -459,7 +459,7 @@ curl -H "Authorization: Bearer $CODEX_PROXY_API_KEY" \
 aserv-status
 ```
 
-The proxy service starts automatically only when `CODEX_PROXY_API_KEY` and `~/.codex/auth.json` are present. If the Codex token is missing, expired, or cannot be refreshed, the proxy refuses to bind or exits; re-run `codex login` manually and restart it:
+The proxy service is enabled for automatic startup and is restarted at the end of installation/update. It starts successfully only when `CODEX_PROXY_API_KEY`, `~/.codex/auth.json`, and a working Codex CLI are present. If the Codex token is missing, expired, or cannot be refreshed, the proxy refuses to bind or exits; re-run `codex login` manually and restart it:
 
 ```sh
 # Debian/Raspberry Pi OS
