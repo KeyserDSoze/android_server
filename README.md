@@ -427,6 +427,27 @@ codex login
 codex login --device-auth
 ```
 
+### Slow or unstable network during Codex installation
+
+The official Codex installer downloads an architecture-specific archive. Its asset download timeout is 300 seconds, so a congested connection can fail even when the machine has internet access. The Android/Linux Server wrapper retries the installation up to three times, using the OpenAI release endpoint first and GitHub Releases as a fallback.
+
+If the complete installer has already finished but Codex failed, retry only the Codex module as root:
+
+```sh
+cd ~/android_server
+sudo sh modules/codex.sh
+```
+
+You can also test the connection and check the detected architecture before retrying:
+
+```sh
+uname -m
+curl -I https://releases.openai.com/codex/install.sh
+curl -I https://github.com/anomalyco/opencode
+```
+
+At 5 Mb/s, a roughly 12 MB archive should normally download well within five minutes. If the transfer repeatedly stalls, retry during a less congested period or temporarily use another connection. A timeout while downloading Codex does not indicate an OAuth or proxy configuration error; those steps happen only after the CLI is installed.
+
 Verify the session and proxy:
 
 ```sh
