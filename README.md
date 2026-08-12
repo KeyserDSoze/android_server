@@ -292,6 +292,17 @@ The password requested here is the encryption password, not the Cloudflare token
 
 The Codex proxy hostname is intentionally not given a default. Set `CLOUDFLARE_CODEX_HOSTNAME` in the profile when `codex_proxy` is enabled. The proxy API key is configured separately with `CODEX_PROXY_API_KEY`; it protects incoming API requests and is not the same as the Codex OAuth session in `~/.codex/auth.json`.
 
+### Applying an updated encrypted profile
+
+After changing a profile and rebuilding its `.enc` file, apply it to an already-installed server without reinstalling packages:
+
+```sh
+cd ~/android_server
+sudo sh bin/aserv-config-apply nipogi
+```
+
+The command asks for the profile encryption password, updates the runtime files under `/etc/default/` or `/etc/conf.d/`, regenerates the Nginx Codex CORS proxy, reloads systemd when applicable, and restarts the affected services. It is the step required to move values such as `CODEX_PROXY_PORT="22001"` from the encrypted profile into the running machine.
+
 ---
 
 ## Installation by Linux Distribution
@@ -618,6 +629,7 @@ aserv-logs <service>      # tail service logs
 aserv-auth                # authenticate GitHub and Azure
 aserv-setup-cloudflare    # configure Cloudflare Tunnel
 aserv-config-build        # encrypt a config profile
+aserv-config-apply <name> # apply an encrypted profile without reinstalling packages
 aserv-llm-install         # install local LLM tools
 ```
 

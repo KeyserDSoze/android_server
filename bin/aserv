@@ -19,6 +19,8 @@ cat <<'HELP'
   CONFIGURATION
     aserv-config-build      Encrypt a configsrc/ profile → config/*.enc
                             Usage: aserv-config-build configsrc/myprofile.conf
+    aserv-config-apply      Apply an encrypted profile to runtime services
+                Usage: aserv-config-apply nipogi
 
   CLOUDFLARE
     aserv-setup-cloudflare  Configure Cloudflare Tunnel
