@@ -71,7 +71,7 @@ server {
             add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
             add_header Vary Origin always;
             add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-            add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin" always;
+            add_header Access-Control-Allow-Headers $http_access_control_request_headers always;
             add_header Access-Control-Max-Age 86400 always;
             add_header Content-Length 0;
             return 204;
@@ -80,7 +80,7 @@ server {
         add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
         add_header Vary Origin always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin, X-Stainless-Timeout, X-Stainless-Lang, X-Stainless-Os, X-Stainless-Package-Version, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Retry-Count, X-Stainless-Arch" always;
 
         proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_http_version 1.1;
