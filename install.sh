@@ -553,6 +553,12 @@ if is_true opencode; then
   log "OpenCode"
   _ocode_ok=0
 
+  _install_opencode_npm() {
+    printf '[opencode] npm ignore-scripts=%s\n' "$(npm config get ignore-scripts 2>/dev/null || echo unknown)"
+    npm_config_ignore_scripts=false npm install -g --foreground-scripts --ignore-scripts=false --allow-scripts=opencode-ai opencode-ai@latest 2>/dev/null || return 1
+    command -v opencode >/dev/null 2>&1 && opencode --version >/dev/null 2>&1
+  }
+
   # Detect libc: Alpine/musl needs a specific musl binary
   _oc_arch="$(uname -m)"
   case "$_oc_arch" in
@@ -588,7 +594,7 @@ if is_true opencode; then
   # Fallback: official npm package (the package is opencode-ai, not opencode).
   if [ $_ocode_ok -eq 0 ] && [ "$_oc_arch" != "armv7l" ] && command -v npm >/dev/null 2>&1; then
     printf '[opencode] Trying npm...\n'
-    npm install -g opencode-ai@latest 2>/dev/null && _ocode_ok=1 || true
+    _install_opencode_npm && _ocode_ok=1 || true
   fi
 
   # Fallback: official install script (handles its own detection)

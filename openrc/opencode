@@ -2,7 +2,7 @@
 name="opencode"
 description="OpenCode AI Server"
 command="/usr/bin/tmux"
-command_args="new-session -d -s opencode 'opencode serve --ui-password \"${OPENCODE_UI_PASSWORD:-}\" --hostname ${OPENCODE_HOSTNAME:-0.0.0.0} --port ${OPENCODE_PORT:-3000} >> /root/logs/opencode.log 2>&1'"
+command_args="new-session -d -s opencode 'OPENCODE_SERVER_PASSWORD=\"${OPENCODE_UI_PASSWORD:-}\" opencode serve --hostname ${OPENCODE_HOSTNAME:-0.0.0.0} --port ${OPENCODE_PORT:-3000} >> /root/logs/opencode.log 2>&1'"
 command_background=false
 
 start_pre() {

@@ -84,7 +84,9 @@ if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -q musl 2>/dev/null)
     && printf 'opencode updated (musl binary)\n' || warn "opencode musl update failed."
   rm -f /tmp/opencode.tar.gz /tmp/opencode
 else
-  npm install -g opencode-ai@latest 2>/dev/null || true
+  npm_config_ignore_scripts=false npm install -g --foreground-scripts --ignore-scripts=false --allow-scripts=opencode-ai opencode-ai@latest 2>/dev/null \
+    && opencode --version >/dev/null 2>&1 \
+    || warn "OpenCode update/postinstall failed."
 fi
 fi
 

@@ -419,18 +419,22 @@ URL:      http://127.0.0.1:22000
 
 For a locally managed tunnel, `aserv-setup-cloudflare` adds the configured Codex hostname automatically.
 
-The installer installs Codex CLI and `openai-api-server-via-codex` independently. A Codex CLI download failure does not skip the proxy installation; the proxy is installed whenever `uv` and Python package installation succeed. The installer never performs an OAuth login automatically. After installation, authenticate Codex as root, because the system service reads `/root/.codex/auth.json`:
+The installer installs Codex CLI and `openai-api-server-via-codex` independently. A Codex CLI download failure does not skip the proxy installation; the proxy is installed whenever `uv` and Python package installation succeed. The installer never performs an OAuth login automatically. The login must be performed as the same account used by the system service, normally `root`, because the service reads `/root/.codex/auth.json`.
+
+Use one root shell for the entire login procedure. Do not run `codex login` as the normal user and then expect the root service to see that session:
 
 ```sh
 sudo -i
+whoami
 export PATH="/usr/local/bin:/root/.local/bin:$PATH"
 codex --version
-codex login
-# On a headless server:
 codex login --device-auth
+ls -la /root/.codex/auth.json
 ```
 
-The installer places the canonical CLI at `/usr/local/bin/codex` and configures that path for the account running the installer plus `/etc/profile.d/aserv-codex.sh` for all login shells. On a system service installation this is normally `root`, regardless of whether the distribution uses systemd or OpenRC. If a new shell still reports `codex: command not found`, check the installation directly:
+The `whoami` command must print `root`. If the machine has a browser and you prefer the regular OAuth flow, replace only the login line with `codex login`.
+
+The installer places the canonical CLI at `/usr/local/bin/codex` and configures that path for the account running the installer plus `/etc/profile.d/aserv-codex.sh` for all login shells. On a system service installation this is normally `root`, regardless of whether the distribution uses systemd or OpenRC. If a new shell still reports `codex: command not found`, check the installation directly from the root shell:
 
 ```sh
 sudo ls -l /usr/local/bin/codex /root/.local/bin/codex
@@ -464,7 +468,8 @@ The Codex CLI installer is distribution-independent and supports Linux x64 and A
 Verify the session and proxy:
 
 ```sh
-ls -la ~/.codex/auth.json
+sudo -i
+ls -la /root/.codex/auth.json
 codex --version
 codex exec "scrivi solo OK"
 curl -H "Authorization: Bearer $CODEX_PROXY_API_KEY" \
@@ -472,7 +477,7 @@ curl -H "Authorization: Bearer $CODEX_PROXY_API_KEY" \
 aserv-status
 ```
 
-The proxy service is enabled for automatic startup and is restarted at the end of installation/update. It starts successfully only when `CODEX_PROXY_API_KEY`, `~/.codex/auth.json`, and a working Codex CLI are present. If the Codex token is missing, expired, or cannot be refreshed, the proxy refuses to bind or exits; re-run `codex login` manually and restart it:
+The proxy service is enabled for automatic startup and is restarted at the end of installation/update. It starts successfully only when `CODEX_PROXY_API_KEY`, `/root/.codex/auth.json`, and a working Codex CLI are present. If the Codex token is missing, expired, or cannot be refreshed, enter a root shell, re-run `codex login --device-auth`, and restart the service:
 
 ```sh
 # Debian/Raspberry Pi OS
@@ -786,6 +791,43 @@ aserv-logs openchamber
 systemctl status openchamber
 journalctl -u openchamber -n 50
 curl http://127.0.0.1:3210
+```
+
+### OpenCode says "postinstall script was not run"
+
+This means the npm package exists, but npm skipped the `postinstall` script that prepares OpenCode's runtime. Check whether npm has scripts disabled:
+
+```sh
+npm config get ignore-scripts
+```
+
+Repair OpenCode with scripts explicitly enabled:
+
+```sh
+sudo -i
+npm_config_ignore_scripts=false npm install -g --foreground-scripts --ignore-scripts=false opencode-ai@latest
+opencode --version
+systemctl restart opencode
+systemctl status opencode --no-pager -l
+```
+
+With newer npm versions, the package may also require an explicit install-script allowlist. Use this complete command:
+
+```sh
+npm_config_ignore_scripts=false npm install -g --foreground-scripts \
+    --ignore-scripts=false --allow-scripts=opencode-ai opencode-ai@latest
+opencode --version
+systemctl restart opencode
+```
+
+OpenCode server authentication uses `OPENCODE_SERVER_PASSWORD`. The installer keeps the profile variable named `OPENCODE_UI_PASSWORD` for compatibility and maps it to the current server environment variable when starting the service.
+
+The installer and update commands perform the same repair automatically. If `opencode --version` still reports the postinstall error, inspect the npm configuration and package path:
+
+```sh
+npm config list
+npm root -g
+ls -la "$(npm root -g)/opencode-ai"
 ```
 
 ### Azure CLI not working
