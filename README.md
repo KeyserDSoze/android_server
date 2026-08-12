@@ -830,6 +830,8 @@ npm root -g
 ls -la "$(npm root -g)/opencode-ai"
 ```
 
+If OpenCode works in an interactive shell but `opencode.service` exits with status `127`, systemd is not seeing the npm global binary in its `PATH`. The service searches `/usr/local/bin`, `/usr/bin`, `/bin`, and `/root/.local/bin` with `command -v`, so it works whether npm installed the command in `/usr/bin` or `/usr/local/bin`.
+
 ### Azure CLI not working
 
 ```sh

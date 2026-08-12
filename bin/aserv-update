@@ -6,6 +6,7 @@ warn() { printf '\n\033[1;33m!! %s\033[0m\n' "$*"; }
 ver()  { command -v "$1" >/dev/null 2>&1 && "$1" "$2" 2>/dev/null | head -1 || printf 'not installed\n'; }
 
 if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
+ASERV_REPO_DIR="${ASERV_REPO_DIR:-$PWD}"
 
 UPDATE_MODE=all
 UPDATE_SELECTION=""
@@ -44,6 +45,25 @@ restart_services() {
         rc-service "$service" restart >/dev/null 2>&1 \
           && printf '  restarted: %s\n' "$service" \
           || warn "  restart failed: $service"
+      fi
+    done
+  fi
+}
+
+sync_service_definitions() {
+  if [ "$OS_ID" = "debian" ]; then
+    for service_file in openchamber.service opencode.service codex-proxy.service; do
+      if [ -f "$ASERV_REPO_DIR/systemd/$service_file" ]; then
+        install -m 0644 "$ASERV_REPO_DIR/systemd/$service_file" "/etc/systemd/system/$service_file"
+        printf '  updated systemd unit: %s\n' "$service_file"
+      fi
+    done
+    systemctl daemon-reload
+  else
+    for service_file in openchamber opencode codex-proxy cloudflared; do
+      if [ -f "$ASERV_REPO_DIR/openrc/$service_file" ]; then
+        install -m 0755 "$ASERV_REPO_DIR/openrc/$service_file" "/etc/init.d/$service_file"
+        printf '  updated OpenRC service: %s\n' "$service_file"
       fi
     done
   fi
@@ -160,6 +180,8 @@ else
   warn "Codex module is not installed; run 'sh modules/codex.sh' from the repository, then rerun aserv-update."
 fi
 fi
+
+sync_service_definitions
 
 log "Versions after update"
 printf '  %-18s %s\n' "node"        "$(ver node --version)"

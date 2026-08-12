@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/opencode
-ExecStart=/bin/bash -c '. /etc/default/opencode; export OPENCODE_SERVER_PASSWORD="$OPENCODE_UI_PASSWORD"; PATH=/usr/local/bin:/usr/bin:/bin; exec /usr/local/bin/opencode serve --hostname "${OPENCODE_HOSTNAME:-0.0.0.0}" --port "${OPENCODE_PORT:-3000}"'
+ExecStart=/bin/bash -c '. /etc/default/opencode; export OPENCODE_SERVER_PASSWORD="$OPENCODE_UI_PASSWORD"; PATH=/usr/local/bin:/usr/bin:/bin:/root/.local/bin; cmd=$(command -v opencode || true); test -n "$cmd" || { echo "opencode command not found in PATH: $PATH" >&2; exit 127; }; exec "$cmd" serve --hostname "${OPENCODE_HOSTNAME:-0.0.0.0}" --port "${OPENCODE_PORT:-3000}"'
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/root/logs/opencode.log
