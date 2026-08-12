@@ -30,10 +30,11 @@ fi
 
 if [ "$CORS_ORIGINS" = "*" ]; then
   CORS_MAP=""
-  CORS_HEADER_VALUE='*'
+  # Echo the requesting origin so browser credentialed requests also work.
+  CORS_HEADER_VALUE='$http_origin'
 else
   CORS_MAP=''
-  CORS_HEADER_VALUE='\$codex_cors_origin'
+  CORS_HEADER_VALUE='$codex_cors_origin'
   OLD_IFS="$IFS"
   IFS=,
   for origin in $CORS_ORIGINS; do
@@ -67,7 +68,8 @@ server {
 
     location / {
         if (\$request_method = OPTIONS) {
-          add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
+            add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
+            add_header Vary Origin always;
             add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
             add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin" always;
             add_header Access-Control-Max-Age 86400 always;
@@ -76,6 +78,7 @@ server {
         }
 
         add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
+        add_header Vary Origin always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin" always;
 
