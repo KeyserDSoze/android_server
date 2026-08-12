@@ -31,10 +31,11 @@ fi
 if [ "$CORS_ORIGINS" = "*" ]; then
   CORS_MAP=""
   # Echo the requesting origin so browser credentialed requests also work.
-  CORS_HEADER_VALUE='$http_origin'
+  CORS_HEADER_LINE="add_header Access-Control-Allow-Origin \$http_origin always;"
+  CORS_MAP=""
 else
   CORS_MAP=''
-  CORS_HEADER_VALUE='$codex_cors_origin'
+  CORS_HEADER_LINE="add_header Access-Control-Allow-Origin \$codex_cors_origin always;"
   OLD_IFS="$IFS"
   IFS=,
   for origin in $CORS_ORIGINS; do
@@ -45,6 +46,8 @@ else
   done
   IFS="$OLD_IFS"
 fi
+
+CORS_REQUEST_HEADERS_LINE="add_header Access-Control-Allow-Headers \$http_access_control_request_headers always;"
 
 if [ -f /etc/alpine-release ]; then
   NGINX_CONF_DIR="/etc/nginx/http.d"
@@ -68,16 +71,16 @@ server {
 
     location / {
         if (\$request_method = OPTIONS) {
-            add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
+            $CORS_HEADER_LINE
             add_header Vary Origin always;
             add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-            add_header Access-Control-Allow-Headers $http_access_control_request_headers always;
+            $CORS_REQUEST_HEADERS_LINE
             add_header Access-Control-Max-Age 86400 always;
             add_header Content-Length 0;
             return 204;
         }
 
-        add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
+        $CORS_HEADER_LINE
         add_header Vary Origin always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin, X-Stainless-Timeout, X-Stainless-Lang, X-Stainless-Os, X-Stainless-Package-Version, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Retry-Count, X-Stainless-Arch" always;
