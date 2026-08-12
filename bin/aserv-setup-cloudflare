@@ -34,7 +34,7 @@ if [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
     printf '        User root\n'
   fi
   if [ -n "${CLOUDFLARE_CODEX_HOSTNAME:-}" ]; then
-    printf '    %-30s service: HTTP   url: localhost:%s\n' "$CLOUDFLARE_CODEX_HOSTNAME" "${CODEX_PROXY_PORT:-22000}"
+    printf '    %-30s service: HTTP   url: localhost:%s\n' "$CLOUDFLARE_CODEX_HOSTNAME" "${CODEX_NGINX_PROXY_PORT:-22000}"
   else
     printf '    Codex hostname: not configured (set CLOUDFLARE_CODEX_HOSTNAME manually)\n'
   fi
@@ -89,7 +89,7 @@ if [ -n "${SSH_HOST:-}" ]; then
   INGRESS="$INGRESS\n  - hostname: $SSH_HOST\n    service: ssh://127.0.0.1:${SSH_PORT:-22}"
 fi
 if [ -n "${CLOUDFLARE_CODEX_HOSTNAME:-}" ]; then
-  INGRESS="$INGRESS\n  - hostname: $CLOUDFLARE_CODEX_HOSTNAME\n    service: http://127.0.0.1:${CODEX_PROXY_PORT:-22000}"
+  INGRESS="$INGRESS\n  - hostname: $CLOUDFLARE_CODEX_HOSTNAME\n    service: http://127.0.0.1:${CODEX_NGINX_PROXY_PORT:-22000}"
 fi
 printf "tunnel: %s\ncredentials-file: %s\n\ningress:\n%b\n  - service: http_status:404\n" \
   "$TUNNEL" "$CRED" "$INGRESS" > /root/.cloudflared/config.yml

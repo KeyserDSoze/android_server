@@ -2,7 +2,7 @@
 name="codex-proxy"
 description="Codex OpenAI-compatible API proxy"
 command="/usr/bin/tmux"
-command_args="new-session -d -s codex-proxy 'openai-api-server-via-codex --host 127.0.0.1 --port ${CODEX_PROXY_PORT:-22000} --api-key \"${CODEX_PROXY_API_KEY:-}\" >> /root/logs/codex-proxy.log 2>&1'"
+command_args="new-session -d -s codex-proxy 'openai-api-server-via-codex --host 127.0.0.1 --port ${CODEX_PROXY_PORT:-22001} --api-key \"${CODEX_PROXY_API_KEY:-}\" >> /root/logs/codex-proxy.log 2>&1'"
 command_background=false
 
 start_pre() {

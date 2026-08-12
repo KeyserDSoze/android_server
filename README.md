@@ -494,6 +494,20 @@ export OPENAI_BASE_URL="https://codex.example.com/v1"
 export OPENAI_API_KEY="replace-with-a-long-random-api-key"
 ```
 
+For browser clients, Cloudflare must point to the Nginx CORS port, not directly to the Codex backend:
+
+```text
+Codex backend: 127.0.0.1:22001
+Nginx public:  127.0.0.1:22000
+Cloudflare:    http://127.0.0.1:22000
+```
+
+Set `CODEX_NGINX_PROXY_CORS_ORIGIN` to `*` for testing or to a comma-separated list of allowed origins in production, for example:
+
+```sh
+CODEX_NGINX_PROXY_CORS_ORIGIN="https://app.example.com,https://admin.example.com"
+```
+
 ---
 
 ## Post-Install: Cloudflare Tunnel

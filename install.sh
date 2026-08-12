@@ -120,6 +120,8 @@ OPENCODE_PORT="3000"
 OPENCODE_HOSTNAME="0.0.0.0"
 CODEX_PROXY_PORT="22000"
 CODEX_PROXY_API_KEY=""
+CODEX_NGINX_PROXY_PORT="22000"
+CODEX_NGINX_PROXY_CORS_ORIGIN="*"
 TAILSCALE_AUTH_KEY=""
 REINSTALL_CLOUDFLARE=0  # set by prompt below
 
@@ -704,14 +706,19 @@ if is_true codex; then
   if is_true codex_proxy; then
     mkdir -p "$CONF_DIR"
     cat > "$CONF_DIR/codex-proxy" <<CFG
-CODEX_PROXY_PORT="${CODEX_PROXY_PORT:-22000}"
+  CODEX_PROXY_PORT="${CODEX_PROXY_PORT:-22001}"
+  CODEX_NGINX_PROXY_PORT="${CODEX_NGINX_PROXY_PORT:-22000}"
+  CODEX_NGINX_PROXY_CORS_ORIGIN="$CODEX_NGINX_PROXY_CORS_ORIGIN"
 CODEX_PROXY_API_KEY="$CODEX_PROXY_API_KEY"
 CFG
-    printf 'Codex proxy config written (%s, port %s)\n' "$CONF_DIR/codex-proxy" "${CODEX_PROXY_PORT:-22000}"
+    printf 'Codex proxy config written (%s, backend %s, public %s)\n' "$CONF_DIR/codex-proxy" "${CODEX_PROXY_PORT:-22001}" "${CODEX_NGINX_PROXY_PORT:-22000}"
     if [ -z "$CLOUDFLARE_CODEX_HOSTNAME" ]; then
       warn "CLOUDFLARE_CODEX_HOSTNAME is empty; configure the Cloudflare hostname manually before exposing port ${CODEX_PROXY_PORT:-22000}."
       track_fail "codex proxy: Cloudflare hostname not configured"
     fi
+    sh "$BASE_DIR/modules/codex-nginx.sh" \
+      && track_ok "nginx CORS proxy (port ${CODEX_NGINX_PROXY_PORT:-22000})" \
+      || { warn "Nginx CORS proxy installation failed."; track_fail "codex nginx proxy: install failed"; }
   else
     printf '[skip] codex_proxy disabled in aserv.yaml\n'
     track_skip "codex API proxy"
@@ -740,6 +747,9 @@ mkdir -p /usr/local/lib/aserv
 if [ -f "$BASE_DIR/modules/codex.sh" ]; then
   install -m 0755 "$BASE_DIR/modules/codex.sh" /usr/local/lib/aserv/codex.sh
 fi
+if [ -f "$BASE_DIR/modules/codex-nginx.sh" ]; then
+  install -m 0755 "$BASE_DIR/modules/codex-nginx.sh" /usr/local/lib/aserv/codex-nginx.sh
+fi
 mkdir -p /usr/local/lib/aserv/systemd /usr/local/lib/aserv/openrc
 for _service_file in "$BASE_DIR"/systemd/*.service; do
   [ -f "$_service_file" ] && install -m 0644 "$_service_file" /usr/local/lib/aserv/systemd/
@@ -756,6 +766,15 @@ done
 
 log "Registering and starting OpenRC services"
 if is_true services; then
+  if [ "$OS_ID" = "debian" ]; then
+    for _unit in openchamber.service opencode.service codex-proxy.service; do
+      _feature="$(printf '%s' "$_unit" | sed 's/\.service$//')"
+      [ "$_feature" = "codex-proxy" ] && _feature="codex_proxy"
+      if is_true "$_feature" && [ -f "$BASE_DIR/systemd/$_unit" ]; then
+        install_service "$BASE_DIR/systemd/$_unit"
+      fi
+    done
+  fi
   if [ -f "$BASE_DIR/openrc/openchamber" ]; then
     install_service "$BASE_DIR/openrc/openchamber"
     if command -v openchamber >/dev/null 2>&1; then
@@ -831,7 +850,7 @@ fi
 restart_managed_services() {
   log "Final service restart"
   if [ "$OS_ID" = "debian" ]; then
-    for _service in ssh openchamber opencode codex-proxy cloudflared tailscaled docker; do
+    for _service in ssh openchamber opencode codex-proxy nginx cloudflared tailscaled docker; do
       if systemctl is-enabled "$_service" >/dev/null 2>&1; then
         systemctl restart "$_service" >/dev/null 2>&1 \
           && printf '  restarted: %s\n' "$_service" \
@@ -839,7 +858,7 @@ restart_managed_services() {
       fi
     done
   else
-    for _service in sshd openchamber opencode codex-proxy cloudflared tailscale docker; do
+    for _service in sshd openchamber opencode codex-proxy nginx cloudflared tailscale docker; do
       if [ -x "/etc/init.d/$_service" ]; then
         rc-service "$_service" restart >/dev/null 2>&1 \
           && printf '  restarted: %s\n' "$_service" \

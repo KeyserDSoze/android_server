@@ -17,7 +17,7 @@ printf 'OS:       %s\n' "$OS_ID"
 printf 'Hostname: '; cat /etc/aserv/hostname 2>/dev/null || echo 'not configured'
 printf 'Tunnel:   '; cat /etc/aserv/tunnel-name 2>/dev/null || echo 'not configured'
 printf '\nServices:\n'
-for s in sshd ssh docker tailscale openchamber cloudflared opencode codex-proxy; do
+for s in sshd ssh docker tailscale openchamber cloudflared opencode codex-proxy nginx; do
   printf '  %-14s ' "$s"
   if [ "$OS_ID" = "debian" ]; then
     systemctl is-active "$s" 2>/dev/null || echo inactive

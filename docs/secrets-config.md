@@ -117,6 +117,8 @@ The installer will:
 | `OPENCHAMBER_PORT` | OpenChamber local port | `3210` |
 | `CLOUDFLARE_CODEX_HOSTNAME` | Public hostname for the Codex proxy | required when `codex_proxy` is enabled; no default |
 | `CODEX_PROXY_PORT` | Local Codex proxy port | `22000` |
+| `CODEX_NGINX_PROXY_PORT` | Public local Nginx CORS port | `22000` |
+| `CODEX_NGINX_PROXY_CORS_ORIGIN` | Allowed browser origins, comma-separated or `*` | `*` for testing |
 | `CODEX_PROXY_API_KEY` | API key accepted by the Codex proxy | required when `codex_proxy` is enabled |
 | `TAILSCALE_AUTH_KEY` | Tailscale pre-auth key | optional |
 

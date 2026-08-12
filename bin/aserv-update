@@ -9,6 +9,9 @@ if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
 ASERV_REPO_DIR="${ASERV_REPO_DIR:-$PWD}"
 ASERV_SERVICE_DIR="/usr/local/lib/aserv"
 
+if [ -f /etc/default/codex-proxy ]; then . /etc/default/codex-proxy; fi
+if [ -f /etc/conf.d/codex-proxy ]; then . /etc/conf.d/codex-proxy; fi
+
 UPDATE_MODE=all
 UPDATE_SELECTION=""
 printf '\nUpdate mode: [A]ll components or [C]hoose components? [A]: '
@@ -33,7 +36,7 @@ update_enabled() {
 restart_services() {
   log "Final service restart"
   if [ "$OS_ID" = "debian" ]; then
-    for service in ssh openchamber opencode codex-proxy cloudflared tailscaled docker; do
+    for service in ssh openchamber opencode codex-proxy nginx cloudflared tailscaled docker; do
       if systemctl is-enabled "$service" >/dev/null 2>&1; then
         systemctl restart "$service" >/dev/null 2>&1 \
           && printf '  restarted: %s\n' "$service" \
@@ -41,7 +44,7 @@ restart_services() {
       fi
     done
   else
-    for service in sshd openchamber opencode codex-proxy cloudflared tailscale docker; do
+    for service in sshd openchamber opencode codex-proxy nginx cloudflared tailscale docker; do
       if [ -x "/etc/init.d/$service" ]; then
         rc-service "$service" restart >/dev/null 2>&1 \
           && printf '  restarted: %s\n' "$service" \
@@ -183,6 +186,15 @@ if [ -x "$_codex_module" ]; then
     || warn "Codex CLI or proxy update failed; inspect the component output above."
 else
   warn "Codex module is not installed; run 'sh modules/codex.sh' from the repository, then rerun aserv-update."
+fi
+if update_enabled codex_proxy; then
+  _codex_nginx_module="$ASERV_SERVICE_DIR/codex-nginx.sh"
+  [ -x "$_codex_nginx_module" ] || _codex_nginx_module="$ASERV_REPO_DIR/modules/codex-nginx.sh"
+  if [ -x "$_codex_nginx_module" ]; then
+    "$_codex_nginx_module" || warn "Nginx CORS proxy update failed."
+  else
+    warn "Codex Nginx module is not installed; rerun install.sh."
+  fi
 fi
 fi
 
