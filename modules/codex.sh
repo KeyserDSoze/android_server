@@ -8,11 +8,35 @@ CODEX_BIN="/usr/local/bin/codex"
 PROXY_BIN="/usr/local/bin/openai-api-server-via-codex"
 UV_BIN="/usr/local/bin/uv"
 UVX_BIN="/usr/local/bin/uvx"
-export PATH="/root/.local/bin:/usr/local/bin:$PATH"
+CODEX_USER_HOME="${HOME:-/root}"
+CODEX_LOCAL_BIN="$CODEX_USER_HOME/.local/bin"
+CODEX_PROFILE="$CODEX_USER_HOME/.profile"
+export PATH="$CODEX_LOCAL_BIN:/usr/local/bin:$PATH"
+
+ensure_codex_path() {
+  if ! grep -q 'aserv Codex PATH' "$CODEX_PROFILE" 2>/dev/null; then
+    cat >> "$CODEX_PROFILE" <<PROFILE
+
+# aserv Codex PATH
+export PATH="/usr/local/bin:$CODEX_LOCAL_BIN:\$PATH"
+PROFILE
+  fi
+}
+
+codex_version_ok() {
+  [ -x "$CODEX_BIN" ] && "$CODEX_BIN" --version >/dev/null 2>&1
+}
 
 install_codex_cli() {
   _codex_arch="$(uname -m 2>/dev/null || echo unknown)"
   printf '[codex] Detected architecture: %s\n' "$_codex_arch"
+  case "$_codex_arch" in
+    x86_64|amd64|aarch64|arm64) ;;
+    *)
+      warn "Codex CLI official binaries support Linux x64 and ARM64, not $_codex_arch."
+      return 1
+      ;;
+  esac
   _codex_installer="$(mktemp /tmp/codex-install.XXXXXX.sh)"
   trap 'rm -f "$_codex_installer"' EXIT HUP INT TERM
 
@@ -30,7 +54,7 @@ install_codex_cli() {
     printf '[codex] Installation attempt %s/3 (asset timeout is 300 seconds)...\n' "$_codex_attempt"
     if [ "$_codex_attempt" -eq 1 ]; then
         if CODEX_NON_INTERACTIVE=true CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=true \
-          CODEX_INSTALL_DIR=/usr/local/bin \
+          CODEX_INSTALL_DIR=/usr/local/bin HOME="$CODEX_USER_HOME" \
           bash "$_codex_installer"; then
         rm -f "$_codex_installer"
         trap - EXIT HUP INT TERM
@@ -39,7 +63,7 @@ install_codex_cli() {
       warn "OpenAI release download failed; the next attempt will use GitHub Releases."
     else
         if CODEX_NON_INTERACTIVE=true CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false \
-          CODEX_INSTALL_DIR=/usr/local/bin \
+          CODEX_INSTALL_DIR=/usr/local/bin HOME="$CODEX_USER_HOME" \
           bash "$_codex_installer"; then
         rm -f "$_codex_installer"
         trap - EXIT HUP INT TERM
@@ -57,31 +81,32 @@ install_codex_cli() {
 
 log "Codex CLI"
 install_codex_cli || true
-if [ -x /root/.local/bin/codex ] && [ ! -x "$CODEX_BIN" ]; then
-  ln -sf /root/.local/bin/codex "$CODEX_BIN"
+if [ ! -x "$CODEX_BIN" ] && [ -x "$CODEX_LOCAL_BIN/codex" ]; then
+  ln -sf "$CODEX_LOCAL_BIN/codex" "$CODEX_BIN"
 fi
+ensure_codex_path
 
-if ! command -v codex >/dev/null 2>&1; then
-  warn "Codex CLI was not installed. Authenticate manually after checking the supported architecture."
+if ! codex_version_ok; then
+  warn "Codex CLI is not usable at $CODEX_BIN. Check the installer output and run: ls -l /usr/local/bin/codex /root/.local/bin/codex"
   _codex_cli_ok=0
 else
   _codex_cli_ok=1
 fi
 
 if [ "${_codex_cli_ok:-0}" = "1" ]; then
-  printf 'codex: %s\n' "$(codex --version 2>/dev/null || echo installed)"
+  printf 'codex: %s\n' "$($CODEX_BIN --version 2>/dev/null || echo installed)"
 fi
 
 if ! command -v uv >/dev/null 2>&1; then
   log "uv"
   curl -LsSf https://astral.sh/uv/install.sh | sh
-  if [ -x /root/.local/bin/uv ]; then
-    ln -sf /root/.local/bin/uv "$UV_BIN"
+  if [ -x "$CODEX_LOCAL_BIN/uv" ]; then
+    ln -sf "$CODEX_LOCAL_BIN/uv" "$UV_BIN"
   fi
-  if [ -x /root/.local/bin/uvx ]; then
-    ln -sf /root/.local/bin/uvx "$UVX_BIN"
+  if [ -x "$CODEX_LOCAL_BIN/uvx" ]; then
+    ln -sf "$CODEX_LOCAL_BIN/uvx" "$UVX_BIN"
   fi
-  export PATH="/root/.local/bin:/usr/local/bin:$PATH"
+  export PATH="$CODEX_LOCAL_BIN:/usr/local/bin:$PATH"
 fi
 
 if ! command -v uvx >/dev/null 2>&1; then
@@ -91,8 +116,8 @@ fi
 
 log "Codex OpenAI-compatible proxy"
 uv tool install --force openai-api-server-via-codex
-if [ -x /root/.local/bin/openai-api-server-via-codex ]; then
-  ln -sf /root/.local/bin/openai-api-server-via-codex "$PROXY_BIN"
+if [ -x "$CODEX_LOCAL_BIN/openai-api-server-via-codex" ]; then
+  ln -sf "$CODEX_LOCAL_BIN/openai-api-server-via-codex" "$PROXY_BIN"
 fi
 
 if ! command -v openai-api-server-via-codex >/dev/null 2>&1; then

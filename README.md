@@ -419,12 +419,22 @@ URL:      http://127.0.0.1:22000
 
 For a locally managed tunnel, `aserv-setup-cloudflare` adds the configured Codex hostname automatically.
 
-The installer installs Codex CLI and `openai-api-server-via-codex` independently. A Codex CLI download failure does not skip the proxy installation; the proxy is installed whenever `uv` and Python package installation succeed. The installer never performs an OAuth login automatically. After installation, authenticate Codex:
+The installer installs Codex CLI and `openai-api-server-via-codex` independently. A Codex CLI download failure does not skip the proxy installation; the proxy is installed whenever `uv` and Python package installation succeed. The installer never performs an OAuth login automatically. After installation, authenticate Codex as root, because the system service reads `/root/.codex/auth.json`:
 
 ```sh
+sudo -i
+export PATH="/usr/local/bin:/root/.local/bin:$PATH"
+codex --version
 codex login
 # On a headless server:
 codex login --device-auth
+```
+
+The installer places the canonical CLI at `/usr/local/bin/codex` and configures that path for the account running the installer. On a system service installation this is normally `root`, regardless of whether the distribution uses systemd or OpenRC. If a new shell still reports `codex: command not found`, check the installation directly:
+
+```sh
+sudo ls -l /usr/local/bin/codex /root/.local/bin/codex
+sudo /usr/local/bin/codex --version
 ```
 
 ### Slow or unstable network during Codex installation
@@ -447,6 +457,8 @@ curl -I https://github.com/anomalyco/opencode
 ```
 
 At 5 Mb/s, a roughly 12 MB archive should normally download well within five minutes. If the transfer repeatedly stalls, retry during a less congested period or temporarily use another connection. A timeout while downloading Codex does not indicate an OAuth or proxy configuration error; those steps happen only after the CLI is installed.
+
+The Codex CLI installer is distribution-independent and supports Linux x64 and ARM64. It does not currently provide an official ARMv7/ARM32 binary, so a Raspberry Pi 2 may run the proxy component but cannot run the official Codex CLI. Ubuntu Server, Debian, Alpine, and other Linux distributions can use the same Codex module when their architecture is x64 or ARM64.
 
 Verify the session and proxy:
 
