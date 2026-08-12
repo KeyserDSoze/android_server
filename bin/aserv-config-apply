@@ -79,10 +79,10 @@ fi
 [ -n "${CLOUDFLARE_TUNNEL_NAME:-}" ] && printf '%s\n' "$CLOUDFLARE_TUNNEL_NAME" > /etc/aserv/tunnel-name
 [ -n "${CLOUDFLARE_HOSTNAME:-}" ] && printf '%s\n' "$CLOUDFLARE_HOSTNAME" > /etc/aserv/hostname
 
-if [ -x /usr/local/lib/aserv/codex-nginx.sh ]; then
-  /usr/local/lib/aserv/codex-nginx.sh
-elif [ -x "$BASE_DIR/modules/codex-nginx.sh" ]; then
+if [ -x "$BASE_DIR/modules/codex-nginx.sh" ]; then
   "$BASE_DIR/modules/codex-nginx.sh"
+elif [ -x /usr/local/lib/aserv/codex-nginx.sh ]; then
+  /usr/local/lib/aserv/codex-nginx.sh
 else
   printf 'WARNING: Nginx Codex module not found; skipped Nginx regeneration.\n' >&2
 fi
