@@ -27,24 +27,35 @@ case "$ARCH" in
 esac
 
 printf '[dotnet] Discovery: distro=%s arch=%s dotnet-arch=%s\n' "$DISTRO" "$ARCH" "$DOTNET_ARCH"
+EXISTING_SDKS=""
+EXISTING_DOTNET10=""
+EXISTING_DOTNET9=""
 if command -v dotnet >/dev/null 2>&1; then
   printf '[dotnet] Existing SDKs:\n'
-  dotnet --list-sdks 2>/dev/null || true
+  EXISTING_SDKS="$(dotnet --list-sdks 2>/dev/null || true)"
+  printf '%s\n' "$EXISTING_SDKS"
+  EXISTING_DOTNET10="$(printf '%s\n' "$EXISTING_SDKS" | awk '$1 ~ /^10\./ {print $1}' | sort -V | tail -n1)"
+  EXISTING_DOTNET9="$(printf '%s\n' "$EXISTING_SDKS" | awk '$1 ~ /^9\./ {print $1}' | sort -V | tail -n1)"
 else
   printf '[dotnet] Existing SDKs: none found\n'
 fi
 
+if [ -n "$EXISTING_DOTNET10" ]; then
+  log ".NET 10 already installed"
+  printf '[dotnet] Keeping installed SDK %s; no download or major-version fallback is needed.\n' "$EXISTING_DOTNET10"
+  DOTNET_INSTALL_NEEDED=0
+else
+  DOTNET_INSTALL_NEEDED=1
+fi
+
 install_apk_sdk() {
-  for pkg in dotnet10-sdk dotnet9-sdk dotnet8-sdk; do
-    if apk search -x "$pkg" 2>/dev/null | grep -q "^${pkg}-"; then
-      printf '[dotnet] Discovery: Alpine package %s is available\n' "$pkg"
-      if apk add --no-cache "$pkg"; then
-        return 0
-      fi
-    else
-      printf '[dotnet] Discovery: Alpine package %s is not available\n' "$pkg"
-    fi
-  done
+  pkg="dotnet10-sdk"
+  if apk search -x "$pkg" 2>/dev/null | grep -q "^${pkg}-"; then
+    printf '[dotnet] Discovery: Alpine package %s is available\n' "$pkg"
+    apk add --no-cache "$pkg" && return 0
+  else
+    printf '[dotnet] Discovery: Alpine package %s is not available\n' "$pkg"
+  fi
   return 1
 }
 
@@ -58,7 +69,9 @@ install_scripted_sdk() {
   /bin/bash /tmp/dotnet-install.sh --channel "$channel" --install-dir /opt/dotnet
 }
 
-if [ "$DISTRO" = "alpine" ] && install_apk_sdk; then
+if [ "${DOTNET_INSTALL_NEEDED:-1}" = "0" ]; then
+  :
+elif [ "$DISTRO" = "alpine" ] && install_apk_sdk; then
   log "dotnet installed via apk"
 else
   if [ "$DISTRO" = "alpine" ]; then
@@ -71,11 +84,13 @@ else
   chmod +x /tmp/dotnet-install.sh
   if install_scripted_sdk "10.0"; then
     log "dotnet 10 installed via official installer"
-  elif install_scripted_sdk "9.0"; then
-    warn "dotnet 10 was unavailable for $ARCH; installed dotnet 9 as fallback."
   else
-    warn "dotnet 10 and dotnet 9 installation failed for $ARCH."
-    exit 1
+    if [ -n "$EXISTING_DOTNET9" ]; then
+      warn "dotnet 10 could not be downloaded; keeping existing dotnet $EXISTING_DOTNET9. No downgrade or major-version change was performed."
+    else
+      warn "dotnet 10 could not be installed for $ARCH. No SDK was changed."
+      exit 1
+    fi
   fi
 fi
 

@@ -728,7 +728,7 @@ az login
 
 ## .NET SDK Notes
 
-The installer performs a discovery pass for the distribution, CPU architecture, existing SDKs, and available Alpine packages. It prefers .NET 10. On Debian-based systems and ARM32, it uses the official `dotnet-install.sh` script; .NET 9 is used only as an explicit fallback when the .NET 10 SDK cannot be installed for the detected architecture.
+The installer performs a discovery pass for the distribution, CPU architecture, existing SDKs, and the .NET 10 package/download source. If any .NET 10 SDK is already installed, it keeps that version and does not download a newer patch automatically. If a .NET 10 download fails, an existing .NET 9 SDK is kept unchanged; the installer never downgrades or updates .NET 9 as a fallback.
 
 ```sh
 dotnet --info
