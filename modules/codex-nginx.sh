@@ -29,9 +29,11 @@ else
 fi
 
 if [ "$CORS_ORIGINS" = "*" ]; then
-  CORS_MAP='        "*" "*";'
+  CORS_MAP=""
+  CORS_HEADER_VALUE='*'
 else
   CORS_MAP=''
+  CORS_HEADER_VALUE='\$codex_cors_origin'
   OLD_IFS="$IFS"
   IFS=,
   for origin in $CORS_ORIGINS; do
@@ -65,7 +67,7 @@ server {
 
     location / {
         if (\$request_method = OPTIONS) {
-            add_header Access-Control-Allow-Origin \$codex_cors_origin always;
+          add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
             add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
             add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin" always;
             add_header Access-Control-Max-Age 86400 always;
@@ -73,7 +75,7 @@ server {
             return 204;
         }
 
-        add_header Access-Control-Allow-Origin \$codex_cors_origin always;
+        add_header Access-Control-Allow-Origin $CORS_HEADER_VALUE always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin" always;
 
