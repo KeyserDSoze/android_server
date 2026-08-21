@@ -544,6 +544,10 @@ aserv-auth
 
 `aserv-auth` configures GitHub and Azure as before, then optionally offers Codex setup. Answer `Y` to configure the Codex session, choose browser login or device authentication, and complete the login as the service account. On the default system-service setup this is `root`, so the session is saved to `/root/.codex/auth.json`. The command then restarts `codex-proxy` and reports whether it became active.
 
+Each provider shows its current state before asking whether to configure it. GitHub can keep multiple logged-in accounts on the same host; use `gh auth switch` to select the active account. Azure CLI can retain multiple signed-in accounts/subscriptions; `az account list` and `az account set --subscription <id-or-name>` select the active subscription. `aserv-auth` never changes an existing account unless you answer `Y` to the corresponding prompt.
+
+Codex uses the session in the service account's `CODEX_HOME` (`/root/.codex` in the default setup). It is not a multi-account switcher: changing the Codex account means running the Codex login again for that service account. Separate Codex accounts require separate service users and separate `CODEX_HOME` directories.
+
 For a headless server, the equivalent manual flow is:
 
 ```sh

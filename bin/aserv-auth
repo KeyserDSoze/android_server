@@ -1,13 +1,31 @@
 #!/bin/sh
 set -eu
 
+ask_yes_no() {
+  prompt="$1"
+  default="$2"
+  printf '%s [%s]: ' "$prompt" "$default"
+  read answer
+  answer="$(printf '%s' "${answer:-$default}" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+  [ "$answer" = "y" ] || [ "$answer" = "yes" ]
+}
+
 echo "GitHub auth"
 if command -v gh >/dev/null 2>&1; then
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    printf '%s' "$GITHUB_TOKEN" | gh auth login --with-token \
-      && echo "GitHub: authenticated with pre-loaded token." || true
+  gh auth status 2>&1 || echo "GitHub: no active login found."
+  if ask_yes_no "Configure or add a GitHub account now?" "n"; then
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      printf '%s' "$GITHUB_TOKEN" | gh auth login --with-token \
+        && echo "GitHub: authenticated with pre-loaded token." || true
+    else
+      gh auth login || true
+    fi
+    gh auth status 2>&1 || true
   else
-    gh auth login || true
+    echo "GitHub: unchanged."
+  fi
+  if ask_yes_no "Switch the active GitHub account?" "n"; then
+    gh auth switch || true
   fi
 else
   echo "gh not installed"
@@ -15,21 +33,47 @@ fi
 
 echo "Azure auth"
 if command -v az >/dev/null 2>&1; then
-  az login || true
-  if [ -n "${AZURE_SUBSCRIPTION_ID:-}" ]; then
-    az account set --subscription "$AZURE_SUBSCRIPTION_ID" \
-      && echo "Azure: subscription set to $AZURE_SUBSCRIPTION_ID" || true
+  az account show 2>/dev/null || echo "Azure: no active login found."
+  if ask_yes_no "Configure or add an Azure account now?" "n"; then
+    az login || true
+    if [ -n "${AZURE_SUBSCRIPTION_ID:-}" ]; then
+      az account set --subscription "$AZURE_SUBSCRIPTION_ID" \
+        && echo "Azure: subscription set to configured subscription." || true
+    fi
+    az account show 2>/dev/null || true
+  else
+    echo "Azure: unchanged."
+  fi
+  if ask_yes_no "Choose the active Azure subscription?" "n"; then
+    az account list --output table || true
+    printf 'Subscription ID or name (Enter to keep current): '
+    read AZURE_CHOICE
+    [ -z "$AZURE_CHOICE" ] || az account set --subscription "$AZURE_CHOICE" || true
   fi
 else
   echo "az not installed"
 fi
 
-echo "OpenCode: run 'opencode' and use /connect to configure your AI provider."
+echo "OpenCode auth"
+if command -v opencode >/dev/null 2>&1; then
+  if ask_yes_no "Configure or change an OpenCode provider now?" "n"; then
+    opencode
+  else
+    echo "OpenCode: unchanged. Run 'opencode' and use /connect later."
+  fi
+else
+  echo "opencode not installed"
+fi
 
 echo ""
 echo "Codex authentication"
 if command -v codex >/dev/null 2>&1; then
-  printf 'Configure Codex login for the Codex proxy now? [y/N]: '
+  if [ -f /root/.codex/auth.json ]; then
+    echo "Codex: an account is already configured at /root/.codex/auth.json."
+  else
+    echo "Codex: no account configured for the root proxy service."
+  fi
+  printf 'Configure or change the Codex account now? [y/N]: '
   read CODEX_SETUP
   CODEX_SETUP="$(printf '%s' "${CODEX_SETUP:-N}" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
   if [ "$CODEX_SETUP" = "y" ] || [ "$CODEX_SETUP" = "yes" ]; then
