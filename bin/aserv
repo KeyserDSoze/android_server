@@ -28,7 +28,7 @@ cat <<'HELP'
                             (local tunnel: login → create → config.yml)
 
   AUTH
-    aserv-auth              Authenticate GitHub CLI (gh) and Azure CLI (az)
+    aserv-auth              Authenticate GitHub, Azure, OpenCode, and Codex
 
   AI / LLM
     aserv-llm-install       Install llama.cpp prerequisites for local LLM

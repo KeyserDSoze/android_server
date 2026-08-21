@@ -542,6 +542,32 @@ The script configures the tunnel, DNS routing, `~/.cloudflared/config.yml`, and 
 aserv-auth
 ```
 
+`aserv-auth` configures GitHub and Azure as before, then optionally offers Codex setup. Answer `Y` to configure the Codex session, choose browser login or device authentication, and complete the login as the service account. On the default system-service setup this is `root`, so the session is saved to `/root/.codex/auth.json`. The command then restarts `codex-proxy` and reports whether it became active.
+
+For a headless server, the equivalent manual flow is:
+
+```sh
+sudo -i
+codex login --device-auth
+ls -la /root/.codex/auth.json
+systemctl restart codex-proxy
+curl http://127.0.0.1:22001/healthz
+```
+
+To inspect the ChatGPT/Codex account and rate limits through the Codex App Server:
+
+```sh
+sudo -i
+printf '%s\n' \
+'{"method":"initialize","id":0,"params":{"clientInfo":{"name":"usage-check","title":"Usage Check","version":"0.1.0"}}}' \
+'{"method":"initialized","params":{}}' \
+'{"method":"account/read","id":2,"params":{"refreshToken":false}}' \
+'{"method":"account/rateLimits/read","id":1}' \
+| timeout 30s codex app-server
+```
+
+The response contains `usedPercent`, `windowDurationMins`, and `resetsAt` for the available windows. This JSON-RPC App Server flow is separate from the HTTP proxy endpoints under `/v1/`.
+
 Or manually:
 
 ```sh

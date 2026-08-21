@@ -25,3 +25,54 @@ else
 fi
 
 echo "OpenCode: run 'opencode' and use /connect to configure your AI provider."
+
+echo ""
+echo "Codex authentication"
+if command -v codex >/dev/null 2>&1; then
+  printf 'Configure Codex login for the Codex proxy now? [y/N]: '
+  read CODEX_SETUP
+  CODEX_SETUP="$(printf '%s' "${CODEX_SETUP:-N}" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+  if [ "$CODEX_SETUP" = "y" ] || [ "$CODEX_SETUP" = "yes" ]; then
+    if [ "$(id -u)" = 0 ]; then
+      printf 'Use device authentication for a headless server? [Y/n]: '
+      read CODEX_DEVICE_AUTH
+      CODEX_DEVICE_AUTH="$(printf '%s' "${CODEX_DEVICE_AUTH:-Y}" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+      if [ "$CODEX_DEVICE_AUTH" = "n" ] || [ "$CODEX_DEVICE_AUTH" = "no" ]; then
+        codex login || true
+      else
+        codex login --device-auth || true
+      fi
+    else
+      printf 'Codex proxy service uses root. Run login as root? [Y/n]: '
+      read CODEX_ROOT_LOGIN
+      CODEX_ROOT_LOGIN="$(printf '%s' "${CODEX_ROOT_LOGIN:-Y}" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+      if [ "$CODEX_ROOT_LOGIN" != "n" ] && [ "$CODEX_ROOT_LOGIN" != "no" ]; then
+        printf 'Use device authentication for a headless server? [Y/n]: '
+        read CODEX_DEVICE_AUTH
+        CODEX_DEVICE_AUTH="$(printf '%s' "${CODEX_DEVICE_AUTH:-Y}" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+        if [ "$CODEX_DEVICE_AUTH" = "n" ] || [ "$CODEX_DEVICE_AUTH" = "no" ]; then
+          sudo -H env PATH="/usr/local/bin:/usr/bin:/bin:/root/.local/bin" codex login || true
+        else
+          sudo -H env PATH="/usr/local/bin:/usr/bin:/bin:/root/.local/bin" codex login --device-auth || true
+        fi
+      fi
+    fi
+    if [ -f /root/.codex/auth.json ]; then
+      echo "Codex: authentication file found at /root/.codex/auth.json"
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl restart codex-proxy 2>/dev/null || true
+        systemctl is-active codex-proxy >/dev/null 2>&1 \
+          && echo "Codex proxy: active" \
+          || echo "Codex proxy: not active; check 'journalctl -u codex-proxy -n 50'"
+      elif command -v rc-service >/dev/null 2>&1; then
+        rc-service codex-proxy restart 2>/dev/null || true
+      fi
+    else
+      echo "Codex: /root/.codex/auth.json not found; the proxy cannot start yet."
+    fi
+  else
+    echo "Codex: skipped. Run 'aserv-auth' again to configure it later."
+  fi
+else
+  echo "Codex CLI not installed; skipping Codex authentication."
+fi

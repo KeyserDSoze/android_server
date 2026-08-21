@@ -77,6 +77,16 @@ sync_service_definitions() {
   fi
 }
 
+sync_helper_commands() {
+  if [ -d "$ASERV_REPO_DIR/bin" ]; then
+    for _helper in "$ASERV_REPO_DIR"/bin/*; do
+      [ -f "$_helper" ] || continue
+      install -m 0755 "$_helper" "/usr/local/bin/$(basename "$_helper")"
+    done
+    printf '  helper commands synchronized\n'
+  fi
+}
+
 if update_enabled system; then
 log "System packages"
 if [ "$OS_ID" = "debian" ]; then
@@ -199,6 +209,7 @@ fi
 fi
 
 sync_service_definitions
+sync_helper_commands
 
 log "Versions after update"
 printf '  %-18s %s\n' "node"        "$(ver node --version)"
