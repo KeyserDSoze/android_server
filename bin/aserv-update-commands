@@ -1,0 +1,33 @@
+#!/bin/sh
+set -eu
+
+BASE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+log() { printf '\033[1;32m>> %s\033[0m\n' "$*"; }
+fail() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || fail "Run as root: sudo aserv-update-commands"
+
+log "Synchronizing helper commands"
+for file in "$BASE_DIR"/bin/*; do
+  [ -f "$file" ] || continue
+  install -m 0755 "$file" "/usr/local/bin/$(basename "$file")"
+  printf '  %s\n' "$(basename "$file")"
+done
+
+mkdir -p /usr/local/lib/aserv/systemd /usr/local/lib/aserv/openrc
+for file in "$BASE_DIR"/modules/*.sh; do
+  [ -f "$file" ] || continue
+  install -m 0755 "$file" "/usr/local/lib/aserv/$(basename "$file")"
+  printf '  module: %s\n' "$(basename "$file")"
+done
+for file in "$BASE_DIR"/systemd/*.service; do
+  [ -f "$file" ] || continue
+  install -m 0644 "$file" /usr/local/lib/aserv/systemd/
+done
+for file in "$BASE_DIR"/openrc/*; do
+  [ -f "$file" ] || continue
+  install -m 0755 "$file" /usr/local/lib/aserv/openrc/
+done
+
+log "Commands updated. No packages or services were changed."

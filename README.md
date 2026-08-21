@@ -654,6 +654,7 @@ The installer creates:
 ```sh
 aserv-status              # system and service overview
 aserv-update              # update all components
+aserv-update-commands     # update only aserv commands and service definitions
 aserv-restart             # restart all services
 aserv-logs <service>      # tail service logs
 aserv-auth                # authenticate GitHub and Azure
