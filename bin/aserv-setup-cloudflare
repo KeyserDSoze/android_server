@@ -6,7 +6,58 @@
 set -eu
 
 log()  { printf '\n\033[1;32m== %s ==\033[0m\n' "$*"; }
+warn() { printf '\n\033[1;33m!! %s\033[0m\n' "$*" >&2; }
 fail() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+if [ -f /etc/alpine-release ]; then
+  OS_ID=alpine
+else
+  OS_ID=debian
+fi
+
+resolve_cloudflared_protocol() {
+  _protocol="${CLOUDFLARE_PROTOCOL:-}"
+  if [ -z "$_protocol" ] && [ -r /etc/aserv/cloudflare-protocol ]; then
+    _protocol="$(tr -d '\r\n[:space:]' < /etc/aserv/cloudflare-protocol | tr '[:upper:]' '[:lower:]')"
+  fi
+  _protocol="${_protocol:-http2}"
+  _protocol="$(printf '%s' "$_protocol" | tr '[:upper:]' '[:lower:]')"
+  case "$_protocol" in
+    auto|quic|http2) ;;
+    *)
+      warn "Invalid CLOUDFLARE_PROTOCOL='$_protocol'; using http2. Allowed: auto, quic, http2."
+      _protocol=http2
+      ;;
+  esac
+  printf '%s' "$_protocol"
+}
+
+apply_cloudflared_transport() {
+  _protocol="$(resolve_cloudflared_protocol)"
+  mkdir -p /etc/aserv
+  printf '%s\n' "$_protocol" > /etc/aserv/cloudflare-protocol
+  chmod 600 /etc/aserv/cloudflare-protocol
+
+  if [ "$OS_ID" = debian ]; then
+    mkdir -p /etc/systemd/system/cloudflared.service.d
+    cat > /etc/systemd/system/cloudflared.service.d/transport.conf <<EOF
+[Service]
+Environment="TUNNEL_TRANSPORT_PROTOCOL=${_protocol}"
+EOF
+    chmod 644 /etc/systemd/system/cloudflared.service.d/transport.conf
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+
+  printf '%s' "$_protocol"
+}
+
+restart_cloudflared() {
+  if [ "$OS_ID" = debian ]; then
+    systemctl restart cloudflared
+  else
+    rc-service cloudflared restart
+  fi
+}
 
 # ── Token-based flow (dashboard-managed tunnel) ───────────────────────────
 # When CLOUDFLARE_TUNNEL_TOKEN is set (from config profile or env), the tunnel
@@ -14,27 +65,28 @@ fail() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 # file is needed — cloudflared just runs with: tunnel run --token <token>
 if [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
   log "Configuring Cloudflare Tunnel with dashboard token"
-  command -v cloudflared >/dev/null 2>&1 || fail "cloudflared not found. Try: apk add cloudflared"
+  command -v cloudflared >/dev/null 2>&1 || fail "cloudflared not found."
   mkdir -p /etc/aserv
   printf '%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > /etc/aserv/cloudflare-token
   chmod 600 /etc/aserv/cloudflare-token
-  rc-service cloudflared restart || true
-  log "Done — token saved, service restarted."
+  _protocol="$(apply_cloudflared_transport)"
+  restart_cloudflared || warn "cloudflared restart failed; inspect its service logs."
+  log "Done — token saved, transport=${_protocol}, service restarted."
   printf '\n  The tunnel ingress (SSH, HTTP, etc.) is managed in the Cloudflare dashboard:\n'
   printf '  Zero Trust → Networks → Tunnels → your tunnel → Public Hostnames\n'
   printf '\n  Recommended hostnames to add:\n'
   if [ -n "${CLOUDFLARE_HOSTNAME:-}" ]; then
-    printf '    %-30s service: HTTP   url: localhost:%s\n' "$CLOUDFLARE_HOSTNAME" "${OPENCHAMBER_PORT:-3210}"
+    printf '    %-30s service: HTTP   url: 127.0.0.1:%s\n' "$CLOUDFLARE_HOSTNAME" "${OPENCHAMBER_PORT:-3210}"
   fi
   if [ -n "${CLOUDFLARE_SSH_HOSTNAME:-}" ]; then
-    printf '    %-30s service: SSH    url: localhost:%s\n' "$CLOUDFLARE_SSH_HOSTNAME" "${SSH_PORT:-22}"
+    printf '    %-30s service: SSH    url: 127.0.0.1:%s\n' "$CLOUDFLARE_SSH_HOSTNAME" "${SSH_PORT:-22}"
     printf '\n  Client SSH config (~/.ssh/config on your PC):\n'
     printf '    Host %s\n' "$CLOUDFLARE_SSH_HOSTNAME"
     printf '        ProxyCommand cloudflared access ssh --hostname %%h\n'
     printf '        User root\n'
   fi
   if [ -n "${CLOUDFLARE_CODEX_HOSTNAME:-}" ]; then
-    printf '    %-30s service: HTTP   url: localhost:%s\n' "$CLOUDFLARE_CODEX_HOSTNAME" "${CODEX_NGINX_PROXY_PORT:-22000}"
+    printf '    %-30s service: HTTP   url: 127.0.0.1:%s\n' "$CLOUDFLARE_CODEX_HOSTNAME" "${CODEX_NGINX_PROXY_PORT:-22000}"
   else
     printf '    Codex hostname: not configured (set CLOUDFLARE_CODEX_HOSTNAME manually)\n'
   fi
@@ -76,7 +128,7 @@ CF_PORT="${OPENCHAMBER_PORT:-3210}"
 
 mkdir -p /root/.cloudflared /etc/aserv
 
-command -v cloudflared >/dev/null 2>&1 || fail "cloudflared not found. Try: apk add cloudflared"
+command -v cloudflared >/dev/null 2>&1 || fail "cloudflared not found."
 
 cloudflared tunnel login
 cloudflared tunnel create "$TUNNEL" || true
@@ -103,13 +155,15 @@ fi
 if [ -n "${CLOUDFLARE_CODEX_HOSTNAME:-}" ]; then
   cloudflared tunnel route dns "$TUNNEL" "$CLOUDFLARE_CODEX_HOSTNAME" || true
 fi
-rc-service cloudflared restart || true
+_protocol="$(apply_cloudflared_transport)"
+restart_cloudflared || warn "cloudflared restart failed; inspect its service logs."
 
 log "Cloudflare configured"
-printf '  Tunnel  : %s\n'         "$TUNNEL"
-printf '  HTTP    : https://%s\n' "$HOSTNAME"
+printf '  Tunnel    : %s\n' "$TUNNEL"
+printf '  HTTP      : https://%s\n' "$HOSTNAME"
+printf '  Transport : %s\n' "$_protocol"
 if [ -n "${SSH_HOST:-}" ]; then
-  printf '  SSH     : %s\n' "$SSH_HOST"
+  printf '  SSH       : %s\n' "$SSH_HOST"
   printf '\n  Client SSH config (~/.ssh/config on your PC):\n'
   printf '    Host %s\n' "$SSH_HOST"
   printf '        ProxyCommand cloudflared access ssh --hostname %%h\n'
