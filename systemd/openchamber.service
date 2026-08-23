@@ -7,6 +7,10 @@ Wants=network-online.target
 Type=simple
 EnvironmentFile=/etc/default/openchamber
 ExecStart=/bin/bash -c 'export OPENCHAMBER_UI_PASSWORD="$OPENCHAMBER_PASSWORD"; PATH=/usr/local/bin:/usr/bin:/bin:/root/.local/bin; cmd=$(command -v openchamber || true); test -n "$cmd" || { echo "openchamber command not found in PATH: $PATH" >&2; exit 127; }; exec "$cmd" --host "${OPENCHAMBER_HOST:-127.0.0.1}" --port "${OPENCHAMBER_PORT:-3210}" --foreground'
+# Node/OpenChamber exits 143 after a normal SIGTERM during systemctl stop/restart.
+# Treat it as a clean shutdown so intentional restarts do not pollute the
+# journal with Failed/result=exit-code entries.
+SuccessExitStatus=143
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
