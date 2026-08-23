@@ -860,7 +860,7 @@ journalctl -u openchamber -n 50
 curl http://127.0.0.1:3210
 ```
 
-If OpenChamber is installed but does not stay running after boot, check that its systemd unit reports `Type=simple` and that it listens on `127.0.0.1:3210`. The service is a foreground process; it should not be declared as `Type=forking`.
+OpenChamber starts a managed daemon and the launcher exits successfully. Its systemd unit therefore uses `Type=oneshot` with `RemainAfterExit=yes`, and `ExecStop` calls `openchamber stop`. This keeps systemd active while OpenChamber's own daemon remains responsible for the process and prevents restart loops or duplicate instances.
 
 ### OpenCode says "postinstall script was not run"
 

@@ -2,7 +2,7 @@
 name="openchamber"
 description="OpenChamber UI"
 command="/usr/bin/tmux"
-command_args="new-session -d -s openchamber 'openchamber --host 127.0.0.1 --port 3210 --ui-password \"${OPENCHAMBER_PASSWORD:-change-me-now}\" >> /root/logs/openchamber.log 2>&1'"
+command_args="new-session -d -s openchamber 'openchamber --port 3210 --ui-password \"${OPENCHAMBER_PASSWORD:-change-me-now}\" >> /root/logs/openchamber.log 2>&1'"
 pidfile="/run/openchamber.pid"
 command_background=false
 
