@@ -1,18 +1,18 @@
 #!/sbin/openrc-run
 name="opencode"
-description="OpenCode AI Server"
-command="/usr/bin/tmux"
-command_args="new-session -d -s opencode 'OPENCODE_SERVER_PASSWORD=\"${OPENCODE_UI_PASSWORD:-}\" opencode serve --hostname ${OPENCODE_HOSTNAME:-0.0.0.0} --port ${OPENCODE_PORT:-3000} >> /root/logs/opencode.log 2>&1'"
-command_background=false
+description="OpenCode AI Server (standalone mode)"
+supervisor="supervise-daemon"
+command="/bin/sh"
+command_args="-c 'PATH=/usr/local/bin:/usr/bin:/bin:/root/.local/bin; export OPENCODE_SERVER_PASSWORD=\"\${OPENCODE_UI_PASSWORD:-}\"; exec opencode serve --hostname \"\${OPENCODE_HOSTNAME:-127.0.0.1}\" --port \"\${OPENCODE_PORT:-3000}\"'"
+output_log="/root/logs/opencode.log"
+error_log="/root/logs/opencode.log"
+respawn_delay=5
+respawn_max=0
 
 start_pre() {
-  mkdir -p /root/logs
-  if tmux has-session -t opencode 2>/dev/null; then
-    eend 0
-    return 1
-  fi
+  checkpath --directory --mode 0755 /root/logs
 }
 
-stop() {
-  tmux kill-session -t opencode 2>/dev/null || true
+depend() {
+  need net
 }
