@@ -150,6 +150,28 @@ cat > /etc/logrotate.d/aserv <<'LOGROTATE'
 LOGROTATE
 chmod 644 /etc/logrotate.d/aserv
 
+# Prefer HTTP/2/TCP for Cloudflare Tunnel. QUIC/UDP can be unstable on some
+# residential/mobile uplinks and manifests as repeated "Failed to handle QUIC
+# stream: EOF" errors, truncated JS/API responses and black OpenChamber pages.
+# The value can be overridden persistently by writing auto, quic or http2 to
+# /etc/aserv/cloudflare-protocol.
+mkdir -p /etc/aserv
+CLOUDFLARE_PROTOCOL_FILE=/etc/aserv/cloudflare-protocol
+if [ -r "$CLOUDFLARE_PROTOCOL_FILE" ]; then
+  CLOUDFLARE_PROTOCOL_VALUE="$(tr -d '\r\n[:space:]' < "$CLOUDFLARE_PROTOCOL_FILE" | tr '[:upper:]' '[:lower:]')"
+else
+  CLOUDFLARE_PROTOCOL_VALUE=http2
+fi
+case "$CLOUDFLARE_PROTOCOL_VALUE" in
+  auto|quic|http2) ;;
+  *)
+    warn "Invalid Cloudflare transport '$CLOUDFLARE_PROTOCOL_VALUE'; forcing http2."
+    CLOUDFLARE_PROTOCOL_VALUE=http2
+    ;;
+esac
+printf '%s\n' "$CLOUDFLARE_PROTOCOL_VALUE" > "$CLOUDFLARE_PROTOCOL_FILE"
+chmod 600 "$CLOUDFLARE_PROTOCOL_FILE"
+
 OPENCODE_STANDALONE_ENABLED=0
 if [ "$OPENCODE_STANDALONE_VALUE" = "true" ]; then
   OPENCODE_STANDALONE_ENABLED=1
@@ -175,6 +197,18 @@ if [ "$OS_ID" = debian ]; then
       install -m 0644 "$service_file" "/etc/systemd/system/$(basename "$service_file")"
       printf '  restored systemd unit: %s\n' "$(basename "$service_file")"
     done
+  fi
+
+  # cloudflared's package/service installer owns the main unit. Keep our
+  # transport choice in a systemd drop-in so package upgrades cannot erase it.
+  if command -v cloudflared >/dev/null 2>&1 || systemctl list-unit-files cloudflared.service >/dev/null 2>&1; then
+    mkdir -p /etc/systemd/system/cloudflared.service.d
+    cat > /etc/systemd/system/cloudflared.service.d/transport.conf <<EOF
+[Service]
+Environment="TUNNEL_TRANSPORT_PROTOCOL=${CLOUDFLARE_PROTOCOL_VALUE}"
+EOF
+    chmod 644 /etc/systemd/system/cloudflared.service.d/transport.conf
+    printf '  cloudflared transport: %s (systemd drop-in)\n' "$CLOUDFLARE_PROTOCOL_VALUE"
   fi
 
   systemctl daemon-reload
@@ -208,6 +242,7 @@ else
   for service in openchamber codex-proxy nginx cloudflared; do
     rc-update add "$service" default >/dev/null 2>&1 || true
   done
+  printf '  cloudflared transport: %s (OpenRC)\n' "$CLOUDFLARE_PROTOCOL_VALUE"
 
   if [ "$MANAGED_OPENCODE" = 1 ]; then
     rc-service opencode stop >/dev/null 2>&1 || true
@@ -218,4 +253,4 @@ else
   fi
 fi
 
-log "Service definitions, AI lifecycle and log rotation installed."
+log "Service definitions, AI lifecycle, Cloudflare transport and log rotation installed."
