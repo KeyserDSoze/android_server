@@ -17,17 +17,22 @@ else
   CONF_DIR=/etc/default
 fi
 
-# OpenChamber starts and manages its own OpenCode server by default.  Running
+# OpenChamber starts and manages its own OpenCode server by default. Running
 # opencode.service at the same time creates a second, unrelated OpenCode
-# instance and can make sessions appear inconsistent.  Keep the standalone
-# unit installed, but disable it whenever OpenChamber is configured and the
-# OpenChamber binary is available.
+# instance and can make sessions appear inconsistent. Keep the standalone unit
+# installed, but disable it whenever OpenChamber is configured unless the user
+# explicitly opts in with OPENCODE_STANDALONE=true.
+OPENCODE_STANDALONE_ENABLED=0
+if [ -f "$CONF_DIR/opencode" ] && grep -Eq '^OPENCODE_STANDALONE="?true"?$' "$CONF_DIR/opencode"; then
+  OPENCODE_STANDALONE_ENABLED=1
+fi
+
 MANAGED_OPENCODE=0
-if [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
+if [ "$OPENCODE_STANDALONE_ENABLED" = 0 ] && [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
   MANAGED_OPENCODE=1
 fi
 
-# Configuration files may contain API/UI passwords.  Tighten permissions even
+# Configuration files may contain API/UI passwords. Tighten permissions even
 # for configurations created by older installer versions.
 for _conf in "$CONF_DIR/openchamber" "$CONF_DIR/opencode" "$CONF_DIR/codex-proxy"; do
   [ -f "$_conf" ] && chmod 600 "$_conf"
