@@ -56,12 +56,13 @@ mkdir -p /etc/aserv /root/logs
 cat > "$CONF_DIR/opencode" <<CFG
 OPENCODE_UI_PASSWORD="${OPENCODE_UI_PASSWORD:-}"
 OPENCODE_PORT="${OPENCODE_PORT:-3000}"
-OPENCODE_HOSTNAME="${OPENCODE_HOSTNAME:-0.0.0.0}"
+OPENCODE_HOSTNAME="${OPENCODE_HOSTNAME:-127.0.0.1}"
 CFG
 
 cat > "$CONF_DIR/openchamber" <<CFG
 OPENCHAMBER_PASSWORD="${OPENCHAMBER_PASSWORD:-}"
 OPENCHAMBER_PORT="${OPENCHAMBER_PORT:-3210}"
+OPENCHAMBER_HOST="${OPENCHAMBER_HOST:-127.0.0.1}"
 CFG
 
 cat > "$CONF_DIR/codex-proxy" <<CFG
@@ -87,26 +88,30 @@ else
   printf 'WARNING: Nginx Codex module not found; skipped Nginx regeneration.\n' >&2
 fi
 
+# Install the latest service definitions.  This also disables the standalone
+# OpenCode service when OpenChamber is configured, avoiding two independent
+# OpenCode servers on the same host.
+if [ -x "$BASE_DIR/bin/aserv-services-install" ]; then
+  "$BASE_DIR/bin/aserv-services-install"
+elif [ -x /usr/local/bin/aserv-services-install ]; then
+  /usr/local/bin/aserv-services-install
+fi
+
 if [ "$OS_ID" = debian ]; then
-  for _unit in openchamber.service opencode.service codex-proxy.service; do
-    _source="$BASE_DIR/systemd/$_unit"
-    [ -f "$_source" ] || _source="/usr/local/lib/aserv/systemd/$_unit"
-    [ -f "$_source" ] && install -m 0644 "$_source" "/etc/systemd/system/$_unit"
-  done
-  systemctl daemon-reload
-  for _service in openchamber opencode codex-proxy nginx cloudflared; do
+  for _service in openchamber codex-proxy nginx cloudflared; do
     systemctl is-enabled "$_service" >/dev/null 2>&1 || continue
     systemctl restart "$_service" >/dev/null 2>&1 || printf 'WARNING: %s did not start; check systemctl status/logs.\n' "$_service" >&2
   done
+  if ! systemctl is-enabled openchamber >/dev/null 2>&1 && systemctl is-enabled opencode >/dev/null 2>&1; then
+    systemctl restart opencode >/dev/null 2>&1 || printf 'WARNING: opencode did not start; check systemctl status/logs.\n' >&2
+  fi
 else
-  for _service in openchamber opencode codex-proxy cloudflared; do
-    _source="$BASE_DIR/openrc/$_service"
-    [ -f "$_source" ] || _source="/usr/local/lib/aserv/openrc/$_service"
-    [ -f "$_source" ] && install -m 0755 "$_source" "/etc/init.d/$_service"
-  done
-  for _service in openchamber opencode codex-proxy nginx cloudflared; do
+  for _service in openchamber codex-proxy nginx cloudflared; do
     [ -x "/etc/init.d/$_service" ] && rc-service "$_service" restart >/dev/null 2>&1 || true
   done
+  if ! rc-update show default 2>/dev/null | grep -q '[[:space:]]openchamber[[:space:]]' && rc-update show default 2>/dev/null | grep -q '[[:space:]]opencode[[:space:]]'; then
+    rc-service opencode restart >/dev/null 2>&1 || true
+  fi
 fi
 
 log "Profile applied and services restarted."
