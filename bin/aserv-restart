@@ -1,16 +1,49 @@
 #!/bin/sh
-if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
+set -eu
+
+if [ -f /etc/alpine-release ]; then
+  OS_ID=alpine
+  CONF_DIR=/etc/conf.d
+else
+  OS_ID=debian
+  CONF_DIR=/etc/default
+fi
 
 if [ -x /usr/local/bin/aserv-services-install ]; then
   /usr/local/bin/aserv-services-install
 fi
 
-for s in openchamber opencode codex-proxy cloudflared sshd docker tailscale; do
-  if [ "$OS_ID" = "debian" ]; then
-    systemctl is-enabled "$s" >/dev/null 2>&1 \
-      && systemctl restart "$s" 2>/dev/null && printf 'restarted: %s\n' "$s" || true
+OPENCODE_STANDALONE_ENABLED=0
+if [ -f "$CONF_DIR/opencode" ] && grep -Eq '^OPENCODE_STANDALONE="?true"?$' "$CONF_DIR/opencode"; then
+  OPENCODE_STANDALONE_ENABLED=1
+fi
+
+MANAGED_OPENCODE=0
+if [ "$OPENCODE_STANDALONE_ENABLED" = 0 ] && [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
+  MANAGED_OPENCODE=1
+fi
+
+restart_service() {
+  _service="$1"
+  if [ "$OS_ID" = debian ]; then
+    systemctl is-enabled "$_service" >/dev/null 2>&1 || return 0
+    systemctl restart "$_service" 2>/dev/null && printf 'restarted: %s\n' "$_service" || true
   else
-    [ -x "/etc/init.d/$s" ] && rc-service "$s" restart 2>/dev/null && printf 'restarted: %s\n' "$s" || true
+    [ -x "/etc/init.d/$_service" ] || return 0
+    rc-service "$_service" restart 2>/dev/null && printf 'restarted: %s\n' "$_service" || true
   fi
+}
+
+# In standalone mode OpenCode must be available before consumers. In the
+# normal OpenChamber mode, OpenChamber owns the OpenCode lifecycle and the
+# standalone service stays disabled.
+if [ "$MANAGED_OPENCODE" = 0 ]; then
+  restart_service opencode
+fi
+restart_service openchamber
+
+for s in codex-proxy cloudflared sshd ssh docker tailscale tailscaled; do
+  restart_service "$s"
 done
+
 aserv-status

@@ -1,19 +1,18 @@
 #!/sbin/openrc-run
 name="openchamber"
 description="OpenChamber UI"
-command="/usr/bin/tmux"
-command_args="new-session -d -s openchamber 'openchamber --port 3210 --ui-password \"${OPENCHAMBER_PASSWORD:-change-me-now}\" >> /root/logs/openchamber.log 2>&1'"
-pidfile="/run/openchamber.pid"
-command_background=false
+supervisor="supervise-daemon"
+command="/bin/sh"
+command_args="-c 'PATH=/usr/local/bin:/usr/bin:/bin:/root/.local/bin; export OPENCHAMBER_UI_PASSWORD=\"\${OPENCHAMBER_PASSWORD:-}\"; exec openchamber --host \"\${OPENCHAMBER_HOST:-127.0.0.1}\" --port \"\${OPENCHAMBER_PORT:-3210}\" --foreground'"
+output_log="/root/logs/openchamber.log"
+error_log="/root/logs/openchamber.log"
+respawn_delay=5
+respawn_max=0
 
 start_pre() {
-  mkdir -p /root/logs
-  if tmux has-session -t openchamber 2>/dev/null; then
-    eend 0
-    return 1
-  fi
+  checkpath --directory --mode 0755 /root/logs
 }
 
-stop() {
-  tmux kill-session -t openchamber 2>/dev/null || true
+depend() {
+  need net
 }

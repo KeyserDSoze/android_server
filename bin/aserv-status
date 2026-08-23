@@ -1,15 +1,22 @@
 #!/bin/sh
 
-# Detect OS
-if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
+if [ -f /etc/alpine-release ]; then
+  OS_ID=alpine
+  CONF_DIR=/etc/conf.d
+else
+  OS_ID=debian
+  CONF_DIR=/etc/default
+fi
 
-svc_status() {
-  if [ "$OS_ID" = "debian" ]; then
-    systemctl is-active "$1" 2>/dev/null || echo "$1: inactive"
-  else
-    [ -x "/etc/init.d/$1" ] && rc-service "$1" status 2>/dev/null || true
-  fi
-}
+OPENCODE_STANDALONE_ENABLED=0
+if [ -f "$CONF_DIR/opencode" ] && grep -Eq '^OPENCODE_STANDALONE="?true"?$' "$CONF_DIR/opencode"; then
+  OPENCODE_STANDALONE_ENABLED=1
+fi
+
+MANAGED_OPENCODE=0
+if [ "$OPENCODE_STANDALONE_ENABLED" = 0 ] && [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
+  MANAGED_OPENCODE=1
+fi
 
 printf '\nAndroid/Linux Server Status\n'
 printf '============================\n'
@@ -17,14 +24,24 @@ printf 'OS:       %s\n' "$OS_ID"
 printf 'Hostname: '; cat /etc/aserv/hostname 2>/dev/null || echo 'not configured'
 printf 'Tunnel:   '; cat /etc/aserv/tunnel-name 2>/dev/null || echo 'not configured'
 printf '\nServices:\n'
-for s in sshd ssh docker tailscale openchamber cloudflared opencode codex-proxy nginx; do
+for s in sshd ssh docker tailscale openchamber cloudflared codex-proxy nginx; do
   printf '  %-14s ' "$s"
-  if [ "$OS_ID" = "debian" ]; then
+  if [ "$OS_ID" = debian ]; then
     systemctl is-active "$s" 2>/dev/null || echo inactive
   else
     [ -x "/etc/init.d/$s" ] && rc-service "$s" status 2>/dev/null || echo not-registered
   fi
 done
+
+printf '  %-14s ' opencode
+if [ "$MANAGED_OPENCODE" = 1 ]; then
+  echo 'managed by OpenChamber (standalone service disabled)'
+elif [ "$OS_ID" = debian ]; then
+  systemctl is-active opencode 2>/dev/null || echo inactive
+else
+  [ -x /etc/init.d/opencode ] && rc-service opencode status 2>/dev/null || echo not-registered
+fi
+
 printf '\nTools:\n'
 for c in git gh az node npm python3 cloudflared opencode openchamber codex openai-api-server-via-codex docker podman rclone tailscale tmux; do
   printf '  %-14s ' "$c"

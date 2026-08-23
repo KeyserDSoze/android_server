@@ -11,9 +11,32 @@ fail() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
 if [ -f /etc/alpine-release ]; then
   OS_ID=alpine
+  CONF_DIR=/etc/conf.d
 else
   OS_ID=debian
+  CONF_DIR=/etc/default
 fi
+
+# OpenChamber starts and manages its own OpenCode server by default. Running
+# opencode.service at the same time creates a second, unrelated OpenCode
+# instance and can make sessions appear inconsistent. Keep the standalone unit
+# installed, but disable it whenever OpenChamber is configured unless the user
+# explicitly opts in with OPENCODE_STANDALONE=true.
+OPENCODE_STANDALONE_ENABLED=0
+if [ -f "$CONF_DIR/opencode" ] && grep -Eq '^OPENCODE_STANDALONE="?true"?$' "$CONF_DIR/opencode"; then
+  OPENCODE_STANDALONE_ENABLED=1
+fi
+
+MANAGED_OPENCODE=0
+if [ "$OPENCODE_STANDALONE_ENABLED" = 0 ] && [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
+  MANAGED_OPENCODE=1
+fi
+
+# Configuration files may contain API/UI passwords. Tighten permissions even
+# for configurations created by older installer versions.
+for _conf in "$CONF_DIR/openchamber" "$CONF_DIR/opencode" "$CONF_DIR/codex-proxy"; do
+  [ -f "$_conf" ] && chmod 600 "$_conf"
+done
 
 if [ "$OS_ID" = debian ]; then
   for service_file in "$BASE_DIR"/systemd/*.service; do
@@ -31,9 +54,15 @@ if [ "$OS_ID" = debian ]; then
     done
   fi
   systemctl daemon-reload
-  for service in openchamber opencode codex-proxy nginx cloudflared; do
+  for service in openchamber codex-proxy nginx cloudflared; do
     systemctl enable "$service" >/dev/null 2>&1 || true
   done
+  if [ "$MANAGED_OPENCODE" = 1 ]; then
+    systemctl disable --now opencode >/dev/null 2>&1 || true
+    printf '  opencode: standalone service disabled (managed by OpenChamber)\n'
+  else
+    systemctl enable opencode >/dev/null 2>&1 || true
+  fi
 else
   for service_file in "$BASE_DIR"/openrc/*; do
     [ -f "$service_file" ] || continue
@@ -49,9 +78,16 @@ else
       printf '  restored OpenRC service: %s\n' "$(basename "$service_file")"
     done
   fi
-  for service in openchamber opencode codex-proxy nginx cloudflared; do
+  for service in openchamber codex-proxy nginx cloudflared; do
     rc-update add "$service" default >/dev/null 2>&1 || true
   done
+  if [ "$MANAGED_OPENCODE" = 1 ]; then
+    rc-service opencode stop >/dev/null 2>&1 || true
+    rc-update del opencode default >/dev/null 2>&1 || true
+    printf '  opencode: standalone service disabled (managed by OpenChamber)\n'
+  else
+    rc-update add opencode default >/dev/null 2>&1 || true
+  fi
 fi
 
 log "Service definitions installed and enabled."
