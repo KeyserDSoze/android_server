@@ -3,8 +3,24 @@ name="cloudflared"
 description="Cloudflare Tunnel"
 command_background=false
 
+cloudflared_protocol() {
+  _protocol="http2"
+  if [ -r /etc/aserv/cloudflare-protocol ]; then
+    _protocol="$(tr -d '\r\n[:space:]' < /etc/aserv/cloudflare-protocol | tr '[:upper:]' '[:lower:]')"
+  fi
+  case "$_protocol" in
+    auto|quic|http2) ;;
+    *) _protocol="http2" ;;
+  esac
+  printf '%s' "$_protocol"
+}
+
 start_pre() {
-  mkdir -p /root/logs
+  mkdir -p /root/logs /etc/aserv
+  if [ ! -f /etc/aserv/cloudflare-protocol ]; then
+    printf '%s\n' "http2" > /etc/aserv/cloudflare-protocol
+    chmod 600 /etc/aserv/cloudflare-protocol
+  fi
   if tmux has-session -t cloudflared 2>/dev/null; then
     eend 0
     return 1
@@ -12,14 +28,15 @@ start_pre() {
 }
 
 start() {
+  _protocol="$(cloudflared_protocol)"
   if [ -f /etc/aserv/cloudflare-token ]; then
     _token="$(cat /etc/aserv/cloudflare-token)"
     tmux new-session -d -s cloudflared \
-      "cloudflared tunnel run --token $_token >> /root/logs/cloudflared.log 2>&1"
+      "cloudflared tunnel --protocol $_protocol run --token $_token >> /root/logs/cloudflared.log 2>&1"
   else
     [ -f /root/.cloudflared/config.yml ] || { eerror "Config missing: run aserv-setup-cloudflare"; return 1; }
     tmux new-session -d -s cloudflared \
-      "cloudflared tunnel --config /root/.cloudflared/config.yml run >> /root/logs/cloudflared.log 2>&1"
+      "cloudflared tunnel --protocol $_protocol --config /root/.cloudflared/config.yml run >> /root/logs/cloudflared.log 2>&1"
   fi
 }
 
