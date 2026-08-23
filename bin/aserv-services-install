@@ -91,8 +91,19 @@ if [ -f "$OPENCHAMBER_CONF" ] && [ -s /etc/aserv/hostname ]; then
   esac
 fi
 
-# Prevent unbounded service logs from filling the root filesystem. copytruncate
-# works with both systemd append: files and supervise-daemon output files.
+# Prevent unbounded service logs from filling the root filesystem. Ensure the
+# rotator exists, then install one policy shared by systemd/OpenRC services.
+if ! command -v logrotate >/dev/null 2>&1; then
+  if [ "$OS_ID" = "debian" ]; then
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -q logrotate >/dev/null 2>&1; then
+      warn "logrotate is not installed; /root/logs may grow without rotation."
+    fi
+  else
+    if ! apk add --no-cache logrotate >/dev/null 2>&1; then
+      warn "logrotate is not installed; /root/logs may grow without rotation."
+    fi
+  fi
+fi
 mkdir -p /etc/logrotate.d
 cat > /etc/logrotate.d/aserv <<'LOGROTATE'
 /root/logs/*.log {
