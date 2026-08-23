@@ -14,6 +14,13 @@ ok()   { printf '\033[1;32m   OK: %s\033[0m\n' "$*"; }
 # Detect OS
 if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
 
+ASERV_DIR="${ASERV_REPO_DIR:-$PWD}"
+if [ -x /usr/local/bin/aserv-services-install ]; then
+  /usr/local/bin/aserv-services-install
+elif [ -x "$ASERV_DIR/bin/aserv-services-install" ]; then
+  "$ASERV_DIR/bin/aserv-services-install"
+fi
+
 svc_stop()    {
   if [ "$OS_ID" = "debian" ]; then systemctl stop    "$1" 2>/dev/null || true
   else                              rc-service        "$1" stop 2>/dev/null || true; fi
@@ -29,7 +36,7 @@ svc_status()  {
 
 # ── Stop services ────────────────────────────────────────────────────────────
 log "Stopping services"
-for s in openchamber opencode; do
+for s in openchamber opencode codex-proxy nginx cloudflared; do
   svc_stop "$s" && printf '  stopped: %s\n' "$s" || printf '  not running: %s\n' "$s"
 done
 
@@ -71,7 +78,7 @@ fi
 
 # ── Restart services ─────────────────────────────────────────────────────────
 log "Starting services"
-for s in openchamber opencode; do
+for s in openchamber opencode codex-proxy nginx cloudflared; do
   svc_start "$s" \
     && ok "$s started" \
     || warn "$s failed to start — check: aserv-logs $s"

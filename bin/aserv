@@ -15,6 +15,7 @@ cat <<'HELP'
   UPDATES
     aserv-update            Update everything or choose components interactively
     aserv-update-commands   Update helper commands and service definitions only
+    aserv-services-install  Install and enable all service definitions
     aserv-update-ai         Stop → reinstall → restart OpenChamber + OpenCode
 
   CONFIGURATION

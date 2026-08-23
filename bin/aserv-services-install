@@ -1,0 +1,57 @@
+#!/bin/sh
+set -eu
+
+BASE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+CACHE_DIR="/usr/local/lib/aserv"
+
+log() { printf '\033[1;32m>> %s\033[0m\n' "$*"; }
+fail() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || fail "Run as root: sudo aserv-services-install"
+
+if [ -f /etc/alpine-release ]; then
+  OS_ID=alpine
+else
+  OS_ID=debian
+fi
+
+if [ "$OS_ID" = debian ]; then
+  for service_file in "$BASE_DIR"/systemd/*.service; do
+    [ -f "$service_file" ] || continue
+    install -m 0644 "$service_file" "/etc/systemd/system/$(basename "$service_file")"
+    printf '  installed systemd unit: %s\n' "$(basename "$service_file")"
+  done
+  _found_service=0
+  for service_file in "$BASE_DIR"/systemd/*.service; do [ -f "$service_file" ] && _found_service=1; done
+  if [ "$_found_service" = 0 ]; then
+    for service_file in "$CACHE_DIR"/systemd/*.service; do
+      [ -f "$service_file" ] || continue
+      install -m 0644 "$service_file" "/etc/systemd/system/$(basename "$service_file")"
+      printf '  restored systemd unit: %s\n' "$(basename "$service_file")"
+    done
+  fi
+  systemctl daemon-reload
+  for service in openchamber opencode codex-proxy nginx cloudflared; do
+    systemctl enable "$service" >/dev/null 2>&1 || true
+  done
+else
+  for service_file in "$BASE_DIR"/openrc/*; do
+    [ -f "$service_file" ] || continue
+    install -m 0755 "$service_file" "/etc/init.d/$(basename "$service_file")"
+    printf '  installed OpenRC service: %s\n' "$(basename "$service_file")"
+  done
+  _found_service=0
+  for service_file in "$BASE_DIR"/openrc/*; do [ -f "$service_file" ] && _found_service=1; done
+  if [ "$_found_service" = 0 ]; then
+    for service_file in "$CACHE_DIR"/openrc/*; do
+      [ -f "$service_file" ] || continue
+      install -m 0755 "$service_file" "/etc/init.d/$(basename "$service_file")"
+      printf '  restored OpenRC service: %s\n' "$(basename "$service_file")"
+    done
+  fi
+  for service in openchamber opencode codex-proxy nginx cloudflared; do
+    rc-update add "$service" default >/dev/null 2>&1 || true
+  done
+fi
+
+log "Service definitions installed and enabled."

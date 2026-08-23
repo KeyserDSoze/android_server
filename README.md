@@ -655,6 +655,7 @@ The installer creates:
 aserv-status              # system and service overview
 aserv-update              # update all components
 aserv-update-commands     # update only aserv commands and service definitions
+aserv-services-install    # install/enable all service definitions
 aserv-restart             # restart all services
 aserv-logs <service>      # tail service logs
 aserv-auth                # authenticate GitHub and Azure
@@ -682,6 +683,15 @@ At the start of `aserv-update` you can choose:
 The update selection also applies only to the current run. After the selected updates finish, the command performs a final best-effort restart of all enabled services, including `cloudflared` and `codex-proxy`.
 
 Updates can include Alpine/Debian packages, npm globals, Azure CLI, GitHub CLI extensions, Cloudflare, .NET, Codex CLI, and the Codex proxy.
+
+To reinstall or re-enable all service definitions without reinstalling application packages, use:
+
+```sh
+cd ~/android_server
+sudo aserv-services-install
+```
+
+This installs the current systemd/OpenRC definitions, runs `daemon-reload` on systemd systems, and enables the managed services. It does not start or restart them. `aserv-restart`, `aserv-update-ai`, and the final stages of `install.sh` use this same service synchronization path before starting services.
 
 ---
 
@@ -849,6 +859,8 @@ systemctl status openchamber
 journalctl -u openchamber -n 50
 curl http://127.0.0.1:3210
 ```
+
+If OpenChamber is installed but does not stay running after boot, check that its systemd unit reports `Type=simple` and that it listens on `127.0.0.1:3210`. The service is a foreground process; it should not be declared as `Type=forking`.
 
 ### OpenCode says "postinstall script was not run"
 

@@ -764,6 +764,10 @@ for f in "$BASE_DIR"/bin/*; do
   fi
 done
 
+if [ -x /usr/local/bin/aserv-services-install ]; then
+  /usr/local/bin/aserv-services-install
+fi
+
 log "Registering and starting OpenRC services"
 if is_true services; then
   if [ "$OS_ID" = "debian" ]; then
