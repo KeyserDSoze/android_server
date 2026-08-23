@@ -64,6 +64,8 @@ cat > "$CONF_DIR/openchamber" <<CFG
 OPENCHAMBER_PASSWORD="${OPENCHAMBER_PASSWORD:-}"
 OPENCHAMBER_PORT="${OPENCHAMBER_PORT:-3210}"
 OPENCHAMBER_HOST="${OPENCHAMBER_HOST:-127.0.0.1}"
+OPENCODE_PORT="${OPENCODE_PORT:-3000}"
+OPENCHAMBER_OPENCODE_HOSTNAME="127.0.0.1"
 CFG
 
 cat > "$CONF_DIR/codex-proxy" <<CFG
@@ -89,9 +91,8 @@ else
   printf 'WARNING: Nginx Codex module not found; skipped Nginx regeneration.\n' >&2
 fi
 
-# Install the latest service definitions. This also disables the standalone
-# OpenCode service when OpenChamber is configured, unless the profile sets
-# OPENCODE_STANDALONE=true.
+# Reconcile service ownership, loopback defaults, secret permissions and log
+# rotation before restarting anything.
 if [ -x "$BASE_DIR/bin/aserv-services-install" ]; then
   "$BASE_DIR/bin/aserv-services-install"
 elif [ -x /usr/local/bin/aserv-services-install ]; then
@@ -99,20 +100,25 @@ elif [ -x /usr/local/bin/aserv-services-install ]; then
 fi
 
 if [ "$OS_ID" = debian ]; then
+  # An explicitly enabled standalone OpenCode starts before OpenChamber.
+  if systemctl is-enabled opencode >/dev/null 2>&1; then
+    systemctl restart opencode >/dev/null 2>&1 \
+      || printf 'WARNING: opencode did not start; check systemctl status/logs.\n' >&2
+  fi
   for _service in openchamber codex-proxy nginx cloudflared; do
     systemctl is-enabled "$_service" >/dev/null 2>&1 || continue
-    systemctl restart "$_service" >/dev/null 2>&1 || printf 'WARNING: %s did not start; check systemctl status/logs.\n' "$_service" >&2
+    systemctl restart "$_service" >/dev/null 2>&1 \
+      || printf 'WARNING: %s did not start; check systemctl status/logs.\n' "$_service" >&2
   done
-  if systemctl is-enabled opencode >/dev/null 2>&1; then
-    systemctl restart opencode >/dev/null 2>&1 || printf 'WARNING: opencode did not start; check systemctl status/logs.\n' >&2
-  fi
 else
-  for _service in openchamber codex-proxy nginx cloudflared; do
-    [ -x "/etc/init.d/$_service" ] && rc-service "$_service" restart >/dev/null 2>&1 || true
-  done
-  if rc-update show default 2>/dev/null | grep -q '[[:space:]]opencode[[:space:]]'; then
+  if rc-update show default 2>/dev/null | awk '{ print $1 }' | grep -qx opencode; then
     rc-service opencode restart >/dev/null 2>&1 || true
   fi
+  for _service in openchamber codex-proxy nginx cloudflared; do
+    [ -x "/etc/init.d/$_service" ] || continue
+    rc-update show default 2>/dev/null | awk '{ print $1 }' | grep -qx "$_service" || continue
+    rc-service "$_service" restart >/dev/null 2>&1 || true
+  done
 fi
 
 log "Profile applied and services restarted."

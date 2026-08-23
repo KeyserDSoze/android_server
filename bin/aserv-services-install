@@ -5,6 +5,7 @@ BASE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 CACHE_DIR="/usr/local/lib/aserv"
 
 log() { printf '\033[1;32m>> %s\033[0m\n' "$*"; }
+warn() { printf '\033[1;33mWARNING: %s\033[0m\n' "$*" >&2; }
 fail() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || fail "Run as root: sudo aserv-services-install"
@@ -17,35 +18,157 @@ else
   CONF_DIR=/etc/default
 fi
 
-# OpenChamber starts and manages its own OpenCode server by default. Running
-# opencode.service at the same time creates a second, unrelated OpenCode
-# instance and can make sessions appear inconsistent. Keep the standalone unit
-# installed, but disable it whenever OpenChamber is configured unless the user
-# explicitly opts in with OPENCODE_STANDALONE=true.
+set_simple_assignment() {
+  _file="$1"
+  _key="$2"
+  _value="$3"
+  [ -f "$_file" ] || return 0
+  if grep -q "^${_key}=" "$_file"; then
+    sed -i "s|^${_key}=.*|${_key}=\"${_value}\"|" "$_file"
+  else
+    printf '%s="%s"\n' "$_key" "$_value" >> "$_file"
+  fi
+}
+
+remove_assignment() {
+  _file="$1"
+  _key="$2"
+  [ -f "$_file" ] || return 0
+  sed -i "/^${_key}=/d" "$_file"
+}
+
+set_raw_assignment() {
+  _file="$1"
+  _key="$2"
+  _raw_value="$3"
+  [ -f "$_file" ] || return 0
+  remove_assignment "$_file" "$_key"
+  printf '%s=%s\n' "$_key" "$_raw_value" >> "$_file"
+}
+
+get_simple_assignment() {
+  _file="$1"
+  _key="$2"
+  [ -f "$_file" ] || return 0
+  awk -F= -v key="$_key" '
+    $1 == key {
+      value=$2
+      gsub(/^[[:space:]\"]+|[[:space:]\"]+$/, "", value)
+      result=value
+    }
+    END { print result }
+  ' "$_file"
+}
+
+OPENCODE_CONF="$CONF_DIR/opencode"
+OPENCHAMBER_CONF="$CONF_DIR/openchamber"
+
+# Reconcile configuration written by older installers. OpenChamber-managed
+# OpenCode is loopback-only and uses the configured OpenCode port.
+OPENCODE_PORT_VALUE="$(get_simple_assignment "$OPENCODE_CONF" OPENCODE_PORT)"
+case "$OPENCODE_PORT_VALUE" in
+  ''|*[!0-9]*) OPENCODE_PORT_VALUE=3000 ;;
+esac
+
+OPENCODE_STANDALONE_VALUE="$(get_simple_assignment "$OPENCODE_CONF" OPENCODE_STANDALONE | tr '[:upper:]' '[:lower:]')"
+[ "$OPENCODE_STANDALONE_VALUE" = "true" ] || OPENCODE_STANDALONE_VALUE=false
+
+if [ -f "$OPENCODE_CONF" ]; then
+  set_simple_assignment "$OPENCODE_CONF" OPENCODE_STANDALONE "$OPENCODE_STANDALONE_VALUE"
+  if [ "$OPENCODE_STANDALONE_VALUE" != "true" ]; then
+    set_simple_assignment "$OPENCODE_CONF" OPENCODE_HOSTNAME "127.0.0.1"
+  fi
+fi
+
+if [ -f "$OPENCHAMBER_CONF" ]; then
+  [ -n "$(get_simple_assignment "$OPENCHAMBER_CONF" OPENCHAMBER_HOST)" ] \
+    || set_simple_assignment "$OPENCHAMBER_CONF" OPENCHAMBER_HOST "127.0.0.1"
+  set_simple_assignment "$OPENCHAMBER_CONF" OPENCODE_PORT "$OPENCODE_PORT_VALUE"
+  [ -n "$(get_simple_assignment "$OPENCHAMBER_CONF" OPENCHAMBER_OPENCODE_HOSTNAME)" ] \
+    || set_simple_assignment "$OPENCHAMBER_CONF" OPENCHAMBER_OPENCODE_HOSTNAME "127.0.0.1"
+
+  if [ "$OPENCODE_STANDALONE_VALUE" = "true" ]; then
+    # Explicit standalone mode means OpenChamber connects to that server rather
+    # than launching a second OpenCode on the same machine.
+    set_simple_assignment "$OPENCHAMBER_CONF" OPENCODE_HOST "http://127.0.0.1:${OPENCODE_PORT_VALUE}"
+    set_simple_assignment "$OPENCHAMBER_CONF" OPENCODE_SKIP_START "true"
+    _standalone_password_raw="$(grep '^OPENCODE_UI_PASSWORD=' "$OPENCODE_CONF" 2>/dev/null | tail -n1 | sed 's/^OPENCODE_UI_PASSWORD=//' || true)"
+    case "$_standalone_password_raw" in
+      ''|'""'|"''") remove_assignment "$OPENCHAMBER_CONF" OPENCODE_SERVER_PASSWORD ;;
+      *) set_raw_assignment "$OPENCHAMBER_CONF" OPENCODE_SERVER_PASSWORD "$_standalone_password_raw" ;;
+    esac
+  else
+    # Remove stale external-server settings when returning to managed mode.
+    remove_assignment "$OPENCHAMBER_CONF" OPENCODE_HOST
+    remove_assignment "$OPENCHAMBER_CONF" OPENCODE_SKIP_START
+    remove_assignment "$OPENCHAMBER_CONF" OPENCODE_SERVER_PASSWORD
+  fi
+fi
+
+# Configuration files may contain API/UI passwords.
+for _conf in "$OPENCHAMBER_CONF" "$OPENCODE_CONF" "$CONF_DIR/codex-proxy"; do
+  [ -f "$_conf" ] && chmod 600 "$_conf"
+done
+
+# Warn loudly when a known public OpenChamber hostname is configured without
+# an application password. This remains a warning because some deployments
+# intentionally enforce authentication in an upstream access proxy.
+if [ -f "$OPENCHAMBER_CONF" ] && [ -s /etc/aserv/hostname ]; then
+  _password_line="$(grep '^OPENCHAMBER_PASSWORD=' "$OPENCHAMBER_CONF" | tail -n1 || true)"
+  case "$_password_line" in
+    ''|'OPENCHAMBER_PASSWORD=""'|"OPENCHAMBER_PASSWORD=''")
+      warn "OpenChamber has a configured public hostname but no UI password. Set OPENCHAMBER_PASSWORD unless an upstream access proxy provides authentication."
+      ;;
+  esac
+fi
+
+# Prevent unbounded service logs from filling the root filesystem. Ensure the
+# rotator exists, then install one policy shared by systemd/OpenRC services.
+if ! command -v logrotate >/dev/null 2>&1; then
+  if [ "$OS_ID" = "debian" ]; then
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -q logrotate >/dev/null 2>&1; then
+      warn "logrotate is not installed; /root/logs may grow without rotation."
+    fi
+  else
+    if ! apk add --no-cache logrotate >/dev/null 2>&1; then
+      warn "logrotate is not installed; /root/logs may grow without rotation."
+    fi
+  fi
+fi
+mkdir -p /etc/logrotate.d
+cat > /etc/logrotate.d/aserv <<'LOGROTATE'
+/root/logs/*.log {
+    daily
+    rotate 14
+    maxsize 20M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}
+LOGROTATE
+chmod 644 /etc/logrotate.d/aserv
+
 OPENCODE_STANDALONE_ENABLED=0
-if [ -f "$CONF_DIR/opencode" ] && grep -Eq '^OPENCODE_STANDALONE="?true"?$' "$CONF_DIR/opencode"; then
+if [ "$OPENCODE_STANDALONE_VALUE" = "true" ]; then
   OPENCODE_STANDALONE_ENABLED=1
 fi
 
 MANAGED_OPENCODE=0
-if [ "$OPENCODE_STANDALONE_ENABLED" = 0 ] && [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
+if [ "$OPENCODE_STANDALONE_ENABLED" = 0 ] && [ -f "$OPENCHAMBER_CONF" ] \
+    && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
   MANAGED_OPENCODE=1
 fi
 
-# Configuration files may contain API/UI passwords. Tighten permissions even
-# for configurations created by older installer versions.
-for _conf in "$CONF_DIR/openchamber" "$CONF_DIR/opencode" "$CONF_DIR/codex-proxy"; do
-  [ -f "$_conf" ] && chmod 600 "$_conf"
-done
-
 if [ "$OS_ID" = debian ]; then
+  _found_service=0
   for service_file in "$BASE_DIR"/systemd/*.service; do
     [ -f "$service_file" ] || continue
+    _found_service=1
     install -m 0644 "$service_file" "/etc/systemd/system/$(basename "$service_file")"
     printf '  installed systemd unit: %s\n' "$(basename "$service_file")"
   done
-  _found_service=0
-  for service_file in "$BASE_DIR"/systemd/*.service; do [ -f "$service_file" ] && _found_service=1; done
   if [ "$_found_service" = 0 ]; then
     for service_file in "$CACHE_DIR"/systemd/*.service; do
       [ -f "$service_file" ] || continue
@@ -53,24 +176,27 @@ if [ "$OS_ID" = debian ]; then
       printf '  restored systemd unit: %s\n' "$(basename "$service_file")"
     done
   fi
+
   systemctl daemon-reload
   for service in openchamber codex-proxy nginx cloudflared; do
     systemctl enable "$service" >/dev/null 2>&1 || true
   done
+
   if [ "$MANAGED_OPENCODE" = 1 ]; then
     systemctl disable --now opencode >/dev/null 2>&1 || true
-    printf '  opencode: standalone service disabled (managed by OpenChamber)\n'
+    systemctl reset-failed opencode >/dev/null 2>&1 || true
+    printf '  opencode: standalone service disabled (managed by OpenChamber on 127.0.0.1:%s)\n' "$OPENCODE_PORT_VALUE"
   else
     systemctl enable opencode >/dev/null 2>&1 || true
   fi
 else
+  _found_service=0
   for service_file in "$BASE_DIR"/openrc/*; do
     [ -f "$service_file" ] || continue
+    _found_service=1
     install -m 0755 "$service_file" "/etc/init.d/$(basename "$service_file")"
     printf '  installed OpenRC service: %s\n' "$(basename "$service_file")"
   done
-  _found_service=0
-  for service_file in "$BASE_DIR"/openrc/*; do [ -f "$service_file" ] && _found_service=1; done
   if [ "$_found_service" = 0 ]; then
     for service_file in "$CACHE_DIR"/openrc/*; do
       [ -f "$service_file" ] || continue
@@ -78,16 +204,18 @@ else
       printf '  restored OpenRC service: %s\n' "$(basename "$service_file")"
     done
   fi
+
   for service in openchamber codex-proxy nginx cloudflared; do
     rc-update add "$service" default >/dev/null 2>&1 || true
   done
+
   if [ "$MANAGED_OPENCODE" = 1 ]; then
     rc-service opencode stop >/dev/null 2>&1 || true
     rc-update del opencode default >/dev/null 2>&1 || true
-    printf '  opencode: standalone service disabled (managed by OpenChamber)\n'
+    printf '  opencode: standalone service disabled (managed by OpenChamber on 127.0.0.1:%s)\n' "$OPENCODE_PORT_VALUE"
   else
     rc-update add opencode default >/dev/null 2>&1 || true
   fi
 fi
 
-log "Service definitions installed and enabled."
+log "Service definitions, AI lifecycle and log rotation installed."

@@ -1,0 +1,50 @@
+name: Shell checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y shellcheck
+
+      - name: Check shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_file() {
+            local file="$1"
+            local first
+            first="$(head -n 1 "$file" || true)"
+
+            case "$first" in
+              *bash*)
+                bash -n "$file"
+                shellcheck -S error -x -s bash "$file"
+                ;;
+              *openrc-run*)
+                sh -n "$file"
+                shellcheck -S error -x -s sh "$file"
+                ;;
+              *sh*)
+                sh -n "$file"
+                shellcheck -S error -x -s sh "$file"
+                ;;
+            esac
+          }
+
+          check_file install.sh
+          while IFS= read -r -d '' file; do
+            check_file "$file"
+          done < <(find bin modules openrc -type f -print0)
