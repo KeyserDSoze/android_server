@@ -11,6 +11,10 @@ respawn_max=0
 
 start_pre() {
   checkpath --directory --mode 0755 /root/logs
+  if [ -f /etc/conf.d/openchamber ] && [ "${OPENCODE_STANDALONE:-false}" != "true" ]; then
+    eerror "OpenCode standalone is disabled because OpenChamber manages OpenCode. Set OPENCODE_STANDALONE=true to override."
+    return 1
+  fi
 }
 
 depend() {
