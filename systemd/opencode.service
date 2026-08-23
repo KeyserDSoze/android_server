@@ -6,6 +6,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/opencode
+# OpenChamber owns the OpenCode lifecycle by default.  If OpenChamber is
+# configured, only start this standalone unit when explicitly requested.
+ExecCondition=/bin/bash -c 'test ! -f /etc/default/openchamber || test "${OPENCODE_STANDALONE:-false}" = true'
 ExecStart=/bin/bash -c 'export OPENCODE_SERVER_PASSWORD="$OPENCODE_UI_PASSWORD"; PATH=/usr/local/bin:/usr/bin:/bin:/root/.local/bin; cmd=$(command -v opencode || true); test -n "$cmd" || { echo "opencode command not found in PATH: $PATH" >&2; exit 127; }; exec "$cmd" serve --hostname "${OPENCODE_HOSTNAME:-127.0.0.1}" --port "${OPENCODE_PORT:-3000}"'
 Restart=on-failure
 RestartSec=5
