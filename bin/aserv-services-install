@@ -30,6 +30,22 @@ set_simple_assignment() {
   fi
 }
 
+remove_assignment() {
+  _file="$1"
+  _key="$2"
+  [ -f "$_file" ] || return 0
+  sed -i "/^${_key}=/d" "$_file"
+}
+
+set_raw_assignment() {
+  _file="$1"
+  _key="$2"
+  _raw_value="$3"
+  [ -f "$_file" ] || return 0
+  remove_assignment "$_file" "$_key"
+  printf '%s=%s\n' "$_key" "$_raw_value" >> "$_file"
+}
+
 get_simple_assignment() {
   _file="$1"
   _key="$2"
@@ -54,7 +70,7 @@ case "$OPENCODE_PORT_VALUE" in
   ''|*[!0-9]*) OPENCODE_PORT_VALUE=3000 ;;
 esac
 
-OPENCODE_STANDALONE_VALUE="$(get_simple_assignment "$OPENCODE_CONF" OPENCODE_STANDALONE)"
+OPENCODE_STANDALONE_VALUE="$(get_simple_assignment "$OPENCODE_CONF" OPENCODE_STANDALONE | tr '[:upper:]' '[:lower:]')"
 [ "$OPENCODE_STANDALONE_VALUE" = "true" ] || OPENCODE_STANDALONE_VALUE=false
 
 if [ -f "$OPENCODE_CONF" ]; then
@@ -67,11 +83,26 @@ fi
 if [ -f "$OPENCHAMBER_CONF" ]; then
   [ -n "$(get_simple_assignment "$OPENCHAMBER_CONF" OPENCHAMBER_HOST)" ] \
     || set_simple_assignment "$OPENCHAMBER_CONF" OPENCHAMBER_HOST "127.0.0.1"
-  # OpenChamber reads OPENCODE_PORT from its own environment when it launches
-  # managed OpenCode. Keep this synchronized with the OpenCode configuration.
   set_simple_assignment "$OPENCHAMBER_CONF" OPENCODE_PORT "$OPENCODE_PORT_VALUE"
   [ -n "$(get_simple_assignment "$OPENCHAMBER_CONF" OPENCHAMBER_OPENCODE_HOSTNAME)" ] \
     || set_simple_assignment "$OPENCHAMBER_CONF" OPENCHAMBER_OPENCODE_HOSTNAME "127.0.0.1"
+
+  if [ "$OPENCODE_STANDALONE_VALUE" = "true" ]; then
+    # Explicit standalone mode means OpenChamber connects to that server rather
+    # than launching a second OpenCode on the same machine.
+    set_simple_assignment "$OPENCHAMBER_CONF" OPENCODE_HOST "http://127.0.0.1:${OPENCODE_PORT_VALUE}"
+    set_simple_assignment "$OPENCHAMBER_CONF" OPENCODE_SKIP_START "true"
+    _standalone_password_raw="$(grep '^OPENCODE_UI_PASSWORD=' "$OPENCODE_CONF" 2>/dev/null | tail -n1 | sed 's/^OPENCODE_UI_PASSWORD=//' || true)"
+    case "$_standalone_password_raw" in
+      ''|'""'|"''") remove_assignment "$OPENCHAMBER_CONF" OPENCODE_SERVER_PASSWORD ;;
+      *) set_raw_assignment "$OPENCHAMBER_CONF" OPENCODE_SERVER_PASSWORD "$_standalone_password_raw" ;;
+    esac
+  else
+    # Remove stale external-server settings when returning to managed mode.
+    remove_assignment "$OPENCHAMBER_CONF" OPENCODE_HOST
+    remove_assignment "$OPENCHAMBER_CONF" OPENCODE_SKIP_START
+    remove_assignment "$OPENCHAMBER_CONF" OPENCODE_SERVER_PASSWORD
+  fi
 fi
 
 # Configuration files may contain API/UI passwords.
