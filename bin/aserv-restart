@@ -13,8 +13,13 @@ if [ -x /usr/local/bin/aserv-services-install ]; then
   /usr/local/bin/aserv-services-install
 fi
 
+OPENCODE_STANDALONE_ENABLED=0
+if [ -f "$CONF_DIR/opencode" ] && grep -Eq '^OPENCODE_STANDALONE="?true"?$' "$CONF_DIR/opencode"; then
+  OPENCODE_STANDALONE_ENABLED=1
+fi
+
 MANAGED_OPENCODE=0
-if [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
+if [ "$OPENCODE_STANDALONE_ENABLED" = 0 ] && [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
   MANAGED_OPENCODE=1
 fi
 
@@ -29,7 +34,7 @@ restart_service() {
   fi
 }
 
-# In standalone mode OpenCode must be available before consumers.  In the
+# In standalone mode OpenCode must be available before consumers. In the
 # normal OpenChamber mode, OpenChamber owns the OpenCode lifecycle and the
 # standalone service stays disabled.
 if [ "$MANAGED_OPENCODE" = 0 ]; then
