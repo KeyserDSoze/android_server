@@ -1,8 +1,9 @@
 #!/bin/sh
 # aserv-update-ai — Stop, update and restart OpenChamber + OpenCode
 #
-# OpenChamber manages its own OpenCode server by default.  The standalone
-# opencode service remains supported when OpenChamber is not configured.
+# OpenChamber manages its own OpenCode server by default. The standalone
+# opencode service remains supported when OpenChamber is not configured or
+# OPENCODE_STANDALONE=true is explicitly set.
 
 set -eu
 
@@ -25,8 +26,13 @@ elif [ -x "$ASERV_DIR/bin/aserv-services-install" ]; then
   "$ASERV_DIR/bin/aserv-services-install"
 fi
 
+OPENCODE_STANDALONE_ENABLED=0
+if [ -f "$CONF_DIR/opencode" ] && grep -Eq '^OPENCODE_STANDALONE="?true"?$' "$CONF_DIR/opencode"; then
+  OPENCODE_STANDALONE_ENABLED=1
+fi
+
 MANAGED_OPENCODE=0
-if [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
+if [ "$OPENCODE_STANDALONE_ENABLED" = 0 ] && [ -f "$CONF_DIR/openchamber" ] && { command -v openchamber >/dev/null 2>&1 || [ -x /usr/local/bin/openchamber ] || [ -x /root/.local/bin/openchamber ]; }; then
   MANAGED_OPENCODE=1
 fi
 
@@ -46,7 +52,7 @@ svc_status() {
 log "Stopping AI services"
 # Stop OpenChamber first so its managed child is shut down cleanly.
 svc_stop openchamber
-# Stop a stale/standalone OpenCode instance as well.  The service installer
+# Stop a stale/standalone OpenCode instance as well. The service installer
 # disables it in managed mode, but this also cleans up older installations.
 svc_stop opencode
 
