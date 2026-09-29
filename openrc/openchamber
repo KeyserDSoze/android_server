@@ -3,7 +3,7 @@ name="openchamber"
 description="OpenChamber UI"
 supervisor="supervise-daemon"
 command="/bin/sh"
-command_args="-c 'PATH=/usr/local/bin:/usr/bin:/bin:/root/.local/bin; export OPENCHAMBER_UI_PASSWORD=\"\${OPENCHAMBER_PASSWORD:-}\"; exec openchamber --host \"\${OPENCHAMBER_HOST:-127.0.0.1}\" --port \"\${OPENCHAMBER_PORT:-3210}\" --foreground'"
+command_args="-c 'PATH=/usr/local/bin:/root/.opencode/bin:/usr/bin:/bin:/root/.local/bin; export OPENCODE_BINARY=\"/root/.opencode/bin/opencode\"; export OPENCHAMBER_UI_PASSWORD=\"\${OPENCHAMBER_PASSWORD:-}\"; exec openchamber --host \"\${OPENCHAMBER_HOST:-127.0.0.1}\" --port \"\${OPENCHAMBER_PORT:-3210}\" --foreground'"
 output_log="/root/logs/openchamber.log"
 error_log="/root/logs/openchamber.log"
 respawn_delay=5
