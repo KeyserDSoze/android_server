@@ -552,78 +552,27 @@ else
 fi
 
 if is_true opencode; then
-  log "OpenCode"
-  _ocode_ok=0
+  log "OpenCode 2"
+  _opencode_module="$BASE_DIR/modules/opencode.sh"
 
-  _install_opencode_npm() {
-    printf '[opencode] npm ignore-scripts=%s\n' "$(npm config get ignore-scripts 2>/dev/null || echo unknown)"
-    npm_config_ignore_scripts=false npm install -g --foreground-scripts --ignore-scripts=false --allow-scripts=opencode-ai opencode-ai@latest 2>/dev/null || return 1
-    command -v opencode >/dev/null 2>&1 && opencode --version >/dev/null 2>&1
-  }
-
-  # Detect libc: Alpine/musl needs a specific musl binary
-  _oc_arch="$(uname -m)"
-  case "$_oc_arch" in
-    aarch64|arm64) _oc_arch="arm64" ;;
-    x86_64)        _oc_arch="x64"   ;;
-    armv7*|armhf)  _oc_arch="armv7l" ;;
-    *)             _oc_arch=""      ;;
-  esac
-
-  _oc_musl=0
-  if [ -f /etc/alpine-release ] || ldd --version 2>&1 | grep -q musl; then
-    _oc_musl=1
-  fi
-
-  if [ "$_oc_musl" = "1" ] && [ -n "$_oc_arch" ] && [ "$_oc_arch" != "armv7l" ]; then
-    # Alpine/musl: download musl-specific binary
-    printf '[opencode] Alpine/musl detected — downloading musl binary (%s)...\n' "$_oc_arch"
-    apk add --no-cache tar curl ca-certificates >/dev/null 2>&1 || true
-    _oc_url="https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz"
-    printf '[opencode] URL: %s\n' "$_oc_url"
-    if curl -fL "$_oc_url" -o /tmp/opencode.tar.gz 2>/dev/null \
-        && tar -xzf /tmp/opencode.tar.gz -C /tmp 2>/dev/null \
-        && install -m 755 /tmp/opencode /usr/local/bin/opencode; then
-      rm -f /tmp/opencode.tar.gz /tmp/opencode
-      printf 'opencode musl binary installed OK\n'
-      _ocode_ok=1
+  if [ -f "$_opencode_module" ]; then
+    if sh "$_opencode_module"; then
+      _opencode_version="$(opencode --version 2>/dev/null | head -1 || echo installed)"
+      printf 'opencode: %s\n' "$_opencode_version"
+      track_ok "opencode $_opencode_version"
+      if is_true services && [ -f "$BASE_DIR/openrc/opencode" ]; then
+        install_service "$BASE_DIR/openrc/opencode"
+        printf '  opencode service registered\n'
+        track_ok "service: opencode (autostart)"
+      fi
     else
-      warn "musl binary download/extract failed. URL: $_oc_url"
-      rm -f /tmp/opencode.tar.gz /tmp/opencode
-    fi
-  fi
-
-  # Fallback: official npm package (the package is opencode-ai, not opencode).
-  if [ $_ocode_ok -eq 0 ] && [ "$_oc_arch" != "armv7l" ] && command -v npm >/dev/null 2>&1; then
-    printf '[opencode] Trying npm...\n'
-    _install_opencode_npm && _ocode_ok=1 || true
-  fi
-
-  # Fallback: official install script (handles its own detection)
-  if [ $_ocode_ok -eq 0 ] && [ "$_oc_arch" != "armv7l" ]; then
-    printf '[opencode] Trying official install script...\n'
-    curl -fsSL https://opencode.ai/install | sh 2>/dev/null && _ocode_ok=1 || true
-  fi
-
-  if [ $_ocode_ok -eq 1 ] && command -v opencode >/dev/null 2>&1; then
-    printf 'opencode: %s\n' "$(opencode --version 2>/dev/null | head -1 || echo installed)"
-    track_ok "opencode $(opencode --version 2>/dev/null | head -1 || echo installed)"
-    if is_true services && [ -f "$BASE_DIR/openrc/opencode" ]; then
-      install_service "$BASE_DIR/openrc/opencode"
-      printf '  opencode service registered\n'
-      track_ok "service: opencode (autostart)"
+      warn "OpenCode 2 installation/update failed."
+      warn "Retry manually: curl -fsSL https://opencode.ai/v2/install | bash"
+      track_fail "opencode: V2 installer failed"
     fi
   else
-    warn "opencode installation failed. Install manually with:"
-    if [ "$_oc_arch" = "armv7l" ]; then
-      warn "  OpenCode does not publish an ARMv7 binary. Raspberry Pi 2 is not supported by the official OpenCode releases."
-      warn "  Use a Raspberry Pi 4/5 64-bit OS, or disable opencode in aserv.yaml."
-    elif [ "$_oc_musl" = "1" ] && [ -n "$_oc_arch" ]; then
-      warn "  curl -fL https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz -o /tmp/oc.tar.gz && tar -xzf /tmp/oc.tar.gz -C /tmp && install -m755 /tmp/opencode /usr/local/bin/opencode"
-    else
-      warn "  npm install -g opencode-ai@latest"
-    fi
-    track_fail "opencode: all install methods failed (arch: ${_oc_arch:-unsupported}, musl: ${_oc_musl})"
+    warn "OpenCode module not found: $_opencode_module"
+    track_fail "opencode: modules/opencode.sh missing"
   fi
 
   ask_if_empty OPENCODE_UI_PASSWORD "OpenCode UI password (Enter to disable auth)"
@@ -744,6 +693,9 @@ fi
 
 log "Installing aserv-* commands"
 mkdir -p /usr/local/lib/aserv
+if [ -f "$BASE_DIR/modules/opencode.sh" ]; then
+  install -m 0755 "$BASE_DIR/modules/opencode.sh" /usr/local/lib/aserv/opencode.sh
+fi
 if [ -f "$BASE_DIR/modules/codex.sh" ]; then
   install -m 0755 "$BASE_DIR/modules/codex.sh" /usr/local/lib/aserv/codex.sh
 fi
