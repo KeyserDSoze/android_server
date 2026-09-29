@@ -862,46 +862,52 @@ curl http://127.0.0.1:3210
 
 OpenChamber starts a managed daemon and the launcher exits successfully. Its systemd unit therefore uses `Type=oneshot` with `RemainAfterExit=yes`, and `ExecStop` calls `openchamber stop`. This keeps systemd active while OpenChamber's own daemon remains responsible for the process and prevents restart loops or duplicate instances.
 
-### OpenCode says "postinstall script was not run"
+### OpenCode 2 installation or update problems
 
-This means the npm package exists, but npm skipped the `postinstall` script that prepares OpenCode's runtime. Check whether npm has scripts disabled:
+OpenCode is managed by `modules/opencode.sh`. The module uses the official V2 installer:
 
 ```sh
-npm config get ignore-scripts
+curl -fsSL https://opencode.ai/v2/install | bash
 ```
 
-Repair OpenCode with scripts explicitly enabled:
+The official installer performs the platform detection for Linux x64/ARM64, including glibc, musl/Alpine, and x64 baseline builds. The aserv wrapper installs the V2 binary under `/root/.opencode/bin/opencode` and exposes it consistently as `/usr/local/bin/opencode`.
+
+After pulling a repository version that introduces or changes the OpenCode module, synchronize the installed helper commands/modules before updating:
+
+```sh
+cd ~/android_server
+git pull
+sudo sh bin/aserv-update-commands
+sudo aserv-update
+```
+
+To reinstall/update only OpenCode 2:
+
+```sh
+cd ~/android_server
+sudo sh modules/opencode.sh
+opencode --version
+```
+
+The migration module verifies the V2 binary before removing legacy npm-managed installations such as `opencode-ai`, `@opencode-ai/cli`, or `@opencode/cli`. It then recreates the stable `/usr/local/bin/opencode` symlink.
+
+If an old binary is still being selected, inspect all candidates:
 
 ```sh
 sudo -i
-npm_config_ignore_scripts=false npm install -g --foreground-scripts --ignore-scripts=false opencode-ai@latest
+type -a opencode
+readlink -f /usr/local/bin/opencode
+/root/.opencode/bin/opencode --version
 opencode --version
-systemctl restart opencode
-systemctl status opencode --no-pager -l
 ```
 
-With newer npm versions, the package may also require an explicit install-script allowlist. Use this complete command:
-
-```sh
-npm_config_ignore_scripts=false npm install -g --foreground-scripts \
-    --ignore-scripts=false --allow-scripts=opencode-ai opencode-ai@latest
-opencode --version
-systemctl restart opencode
-```
+The expected system-managed target is `/root/.opencode/bin/opencode`.
 
 OpenCode server authentication uses `OPENCODE_SERVER_PASSWORD`. The installer keeps the profile variable named `OPENCODE_UI_PASSWORD` for compatibility and maps it to the current server environment variable when starting the service.
 
-The installer and update commands perform the same repair automatically. If `opencode --version` still reports the postinstall error, inspect the npm configuration and package path:
+The standalone service still uses `opencode serve --hostname ... --port ...`. Both systemd and OpenRC search `/usr/local/bin` and `/root/.opencode/bin`, so the V2 binary works even if the stable symlink needs to be recreated.
 
-```sh
-npm config list
-npm root -g
-ls -la "$(npm root -g)/opencode-ai"
-```
-
-If OpenCode works in an interactive shell but `opencode.service` exits with status `127`, systemd is not seeing the npm global binary in its `PATH`. The service searches `/usr/local/bin`, `/usr/bin`, `/bin`, and `/root/.local/bin` with `command -v`, so it works whether npm installed the command in `/usr/bin` or `/usr/local/bin`.
-
-Service definitions are also cached under `/usr/local/lib/aserv/` during installation. This lets `aserv-update` synchronize systemd/OpenRC units even when it is launched from the user's home directory instead of from the repository.
+Service definitions and modules are cached under `/usr/local/lib/aserv/` during installation or `aserv-update-commands`. This lets `aserv-update` use the same OpenCode V2 logic even when launched outside the repository directory.
 
 ### Azure CLI not working
 
