@@ -41,6 +41,11 @@ HOME="$OPENCODE_INSTALL_HOME" bash "$_tmp_installer" --no-modify-path \
 
 _new_version="$("$OPENCODE_INSTALL_BIN" --version 2>/dev/null | head -1 || true)"
 [ -n "$_new_version" ] || fail "Installed OpenCode 2 binary did not return a version."
+_new_version_number="$(printf '%s\n' "$_new_version" | awk '{ print $NF }' | sed 's/^v//')"
+case "$_new_version_number" in
+  2.*) ;;
+  *) fail "Official V2 installer returned an unexpected version: $_new_version" ;;
+esac
 
 # V1 and early V2 beta package names can leave another opencode earlier/later
 # in PATH. Remove package-managed copies only after the V2 binary is verified.
@@ -56,6 +61,40 @@ hash -r 2>/dev/null || true
 
 _final_version="$(/usr/local/bin/opencode --version 2>/dev/null | head -1 || true)"
 [ -n "$_final_version" ] || fail "OpenCode 2 is installed but /usr/local/bin/opencode is not usable."
+_final_version_number="$(printf '%s\n' "$_final_version" | awk '{ print $NF }' | sed 's/^v//')"
+case "$_final_version_number" in
+  2.*) ;;
+  *) fail "/usr/local/bin/opencode is not OpenCode 2: $_final_version" ;;
+esac
+
+# OpenChamber resolves its persisted opencodeBinary setting before PATH.
+# Pin it to the verified V2 binary so a stale V1 npm path cannot win.
+_openchamber_config_home="${XDG_CONFIG_HOME:-$OPENCODE_INSTALL_HOME/.config}"
+_openchamber_settings_dir="$_openchamber_config_home/openchamber"
+_openchamber_settings="$_openchamber_settings_dir/settings.json"
+mkdir -p "$_openchamber_settings_dir"
+
+if [ -f "$_openchamber_settings" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    _openchamber_tmp="$(mktemp "$_openchamber_settings_dir/settings.json.tmp.XXXXXX")"
+    if jq --arg bin "$OPENCODE_INSTALL_BIN" \
+        'if type == "object" then .opencodeBinary = $bin else error("settings root is not an object") end' \
+        "$_openchamber_settings" > "$_openchamber_tmp"; then
+      chmod 600 "$_openchamber_tmp"
+      mv "$_openchamber_tmp" "$_openchamber_settings"
+      printf '[opencode] OpenChamber binary pinned to: %s\n' "$OPENCODE_INSTALL_BIN"
+    else
+      rm -f "$_openchamber_tmp"
+      warn "Could not update $_openchamber_settings; OpenChamber may still resolve an old OpenCode binary."
+    fi
+  else
+    warn "jq not found; could not update OpenChamber opencodeBinary setting."
+  fi
+else
+  printf '{\n  "opencodeBinary": "%s"\n}\n' "$OPENCODE_INSTALL_BIN" > "$_openchamber_settings"
+  chmod 600 "$_openchamber_settings"
+  printf '[opencode] OpenChamber binary pinned to: %s\n' "$OPENCODE_INSTALL_BIN"
+fi
 
 printf '[opencode] Installed: %s\n' "$_final_version"
 printf '[opencode] Binary: %s -> %s\n' "/usr/local/bin/opencode" "$OPENCODE_INSTALL_BIN"
