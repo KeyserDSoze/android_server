@@ -144,20 +144,18 @@ if update_enabled node || update_enabled openchamber || update_enabled opencode 
 fi
 
 if update_enabled opencode; then
-  log "OpenCode"
-  _oc_arch="$(uname -m)"
-  case "$_oc_arch" in aarch64|arm64) _oc_arch="arm64" ;; *) _oc_arch="x64" ;; esac
-  if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -q musl 2>/dev/null); then
-    _oc_url="https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${_oc_arch}-musl.tar.gz"
-    curl -fL "$_oc_url" -o /tmp/opencode.tar.gz 2>/dev/null \
-      && tar -xzf /tmp/opencode.tar.gz -C /tmp 2>/dev/null \
-      && install -m 755 /tmp/opencode /usr/local/bin/opencode \
-      && printf 'opencode updated (musl binary)\n' || warn "opencode musl update failed."
-    rm -f /tmp/opencode.tar.gz /tmp/opencode
+  log "OpenCode 2"
+  _opencode_module="$ASERV_SERVICE_DIR/opencode.sh"
+  if [ ! -f "$_opencode_module" ]; then
+    _opencode_module="$ASERV_REPO_DIR/modules/opencode.sh"
+  fi
+
+  if [ -f "$_opencode_module" ]; then
+    sh "$_opencode_module" \
+      && printf 'opencode updated: %s\n' "$(ver opencode --version)" \
+      || warn "OpenCode 2 update failed."
   else
-    npm_config_ignore_scripts=false npm install -g --foreground-scripts --ignore-scripts=false --allow-scripts=opencode-ai opencode-ai@latest 2>/dev/null \
-      && opencode --version >/dev/null 2>&1 \
-      || warn "OpenCode update/postinstall failed."
+    warn "OpenCode 2 module not found. Run 'aserv-update-commands' from the updated repository first."
   fi
 fi
 
