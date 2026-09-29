@@ -903,6 +903,16 @@ opencode --version
 
 The expected system-managed target is `/root/.opencode/bin/opencode`.
 
+OpenChamber also persists its selected CLI in `/root/.config/openchamber/settings.json`. Because that `opencodeBinary` setting takes precedence over PATH lookup, an old value can make OpenChamber keep reporting OpenCode 1.x even after V2 has been installed. The OpenCode module now rewrites that setting to the verified V2 binary automatically. You can verify it with:
+
+```sh
+jq -r '.opencodeBinary // empty' /root/.config/openchamber/settings.json
+/root/.opencode/bin/opencode --version
+/usr/local/bin/opencode --version
+```
+
+Both version commands must report `2.x`, and the persisted OpenChamber path should be `/root/.opencode/bin/opencode`. The OpenChamber systemd/OpenRC service also exports that path as `OPENCODE_BINARY` and includes `/root/.opencode/bin` in its PATH.
+
 OpenCode server authentication uses `OPENCODE_SERVER_PASSWORD`. The installer keeps the profile variable named `OPENCODE_UI_PASSWORD` for compatibility and maps it to the current server environment variable when starting the service.
 
 The standalone service still uses `opencode serve --hostname ... --port ...`. Both systemd and OpenRC search `/usr/local/bin` and `/root/.opencode/bin`, so the V2 binary works even if the stable symlink needs to be recreated.
