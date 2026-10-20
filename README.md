@@ -878,7 +878,7 @@ After pulling a repository version that introduces or changes the OpenCode modul
 cd ~/android_server
 git pull
 sudo sh bin/aserv-update-commands
-sudo aserv-update
+sudo aserv-update-ai
 ```
 
 To reinstall/update only OpenCode 2:
@@ -917,7 +917,13 @@ OpenCode server authentication uses `OPENCODE_SERVER_PASSWORD`. The installer ke
 
 The standalone service still uses `opencode serve --hostname ... --port ...`. Both systemd and OpenRC search `/usr/local/bin` and `/root/.opencode/bin`, so the V2 binary works even if the stable symlink needs to be recreated.
 
-Service definitions and modules are cached under `/usr/local/lib/aserv/` during installation or `aserv-update-commands`. This lets `aserv-update` use the same OpenCode V2 logic even when launched outside the repository directory.
+Service definitions and modules are cached under `/usr/local/lib/aserv/` during installation or `aserv-update-commands`. The checkout path is stored in `/etc/aserv/repository-path`, so installed `aserv-update-ai`, `aserv-update` and `aserv-update-commands` work from other directories too. After the one-time synchronization above, subsequent AI-only updates are simply:
+
+```sh
+sudo aserv-update-ai
+```
+
+`aserv-update-ai` uses the official V2 installer to fetch the latest 2.x release and restarts the services afterward. It exits nonzero if either update or a service restart fails. For an unusual checkout location, use `sudo aserv-update-commands /absolute/path/to/checkout` to synchronize the installed commands.
 
 ### Azure CLI not working
 
