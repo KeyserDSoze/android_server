@@ -53,7 +53,7 @@ get_simple_assignment() {
   awk -F= -v key="$_key" '
     $1 == key {
       value=$2
-      gsub(/^[[:space:]\"]+|[[:space:]\"]+$/, "", value)
+      gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", value)
       result=value
     }
     END { print result }
