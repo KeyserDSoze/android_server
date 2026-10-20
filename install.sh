@@ -280,6 +280,9 @@ fi
 printf 'Base dir : %s\n' "$BASE_DIR"
 printf 'Config   : %s\n' "$CONFIG_FILE"
 mkdir -p /root/projects /root/models /root/logs /root/scripts /root/backup /etc/aserv
+# Record the original checkout for commands installed in /usr/local/bin.
+printf '%s\n' "$BASE_DIR" > /etc/aserv/repository-path
+chmod 644 /etc/aserv/repository-path
 cp "$CONFIG_FILE" /etc/aserv/aserv.yaml
 printf 'Workspace directories created.\n'
 
