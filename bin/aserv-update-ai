@@ -19,7 +19,26 @@ else
   CONF_DIR=/etc/default
 fi
 
-ASERV_DIR="${ASERV_REPO_DIR:-$PWD}"
+[ "$(id -u)" = 0 ] || { warn "Run as root: sudo aserv-update-ai"; exit 1; }
+
+ASERV_DIR="${ASERV_REPO_DIR:-}"
+if [ -z "$ASERV_DIR" ] && [ -f "$PWD/modules/opencode.sh" ]; then
+  ASERV_DIR="$PWD"
+fi
+if [ -z "$ASERV_DIR" ] && [ -r /etc/aserv/repository-path ]; then
+  IFS= read -r ASERV_DIR < /etc/aserv/repository-path || true
+fi
+
+# Resolve V2 before stopping any running services.
+OPENCODE_MODULE="/usr/local/lib/aserv/opencode.sh"
+if [ ! -f "$OPENCODE_MODULE" ] && [ -n "$ASERV_DIR" ] && [ -f "$ASERV_DIR/modules/opencode.sh" ]; then
+  OPENCODE_MODULE="$ASERV_DIR/modules/opencode.sh"
+fi
+if [ ! -f "$OPENCODE_MODULE" ]; then
+  warn "OpenCode V2 module missing. From the checkout run: sudo sh bin/aserv-update-commands"
+  exit 1
+fi
+UPDATE_FAILED=0
 if [ -x /usr/local/bin/aserv-services-install ]; then
   /usr/local/bin/aserv-services-install
 elif [ -x "$ASERV_DIR/bin/aserv-services-install" ]; then
@@ -58,25 +77,24 @@ svc_stop opencode
 
 log "Updating OpenChamber"
 if command -v npm >/dev/null 2>&1; then
-  npm install -g @openchamber/web \
-    && ok "openchamber updated: $(openchamber --version 2>/dev/null | head -1 || echo ok)" \
-    || warn "openchamber npm update failed."
+  # Explicitly approve only these two native dependencies for global installs.
+  if npm install -g --allow-scripts=node-pty,msgpackr-extract @openchamber/web; then
+    ok "openchamber updated: $(openchamber --version 2>/dev/null | head -1 || echo ok)"
+  else
+    warn "openchamber npm update failed."
+    UPDATE_FAILED=1
+  fi
 else
   warn "npm not found — skipping openchamber update."
+  UPDATE_FAILED=1
 fi
 
 log "Updating OpenCode 2"
-_opencode_module="/usr/local/lib/aserv/opencode.sh"
-if [ ! -f "$_opencode_module" ]; then
-  _opencode_module="$ASERV_DIR/modules/opencode.sh"
-fi
-
-if [ -f "$_opencode_module" ]; then
-  sh "$_opencode_module" \
-    && ok "opencode: $(opencode --version 2>/dev/null | head -1 || echo updated)" \
-    || warn "OpenCode 2 update failed."
+if sh "$OPENCODE_MODULE"; then
+  ok "opencode: $(/usr/local/bin/opencode --version 2>/dev/null | head -1)"
 else
-  warn "OpenCode 2 module not found. Run 'aserv-update-commands' from the updated repository first."
+  warn "OpenCode 2 update failed."
+  UPDATE_FAILED=1
 fi
 
 # Re-run service installation after updating binaries so an older standalone
@@ -89,17 +107,26 @@ fi
 
 log "Starting AI services"
 if [ "$MANAGED_OPENCODE" = 1 ]; then
-  svc_start openchamber \
-    && ok "openchamber started (OpenCode managed by OpenChamber)" \
-    || warn "openchamber failed to start — check: aserv-logs openchamber"
+  if svc_start openchamber; then
+    ok "openchamber started (OpenCode managed by OpenChamber)"
+  else
+    warn "openchamber failed to start — check: aserv-logs openchamber"
+    UPDATE_FAILED=1
+  fi
 else
-  svc_start opencode \
-    && ok "opencode started" \
-    || warn "opencode failed to start — check: aserv-logs opencode"
+  if svc_start opencode; then
+    ok "opencode started"
+  else
+    warn "opencode failed to start — check: aserv-logs opencode"
+    UPDATE_FAILED=1
+  fi
   if [ -f "$CONF_DIR/openchamber" ]; then
-    svc_start openchamber \
-      && ok "openchamber started" \
-      || warn "openchamber failed to start — check: aserv-logs openchamber"
+    if svc_start openchamber; then
+      ok "openchamber started"
+    else
+      warn "openchamber failed to start — check: aserv-logs openchamber"
+      UPDATE_FAILED=1
+    fi
   fi
 fi
 
@@ -112,3 +139,5 @@ else
   printf '\n--- opencode ---\n'
   svc_status opencode
 fi
+
+exit "$UPDATE_FAILED"
