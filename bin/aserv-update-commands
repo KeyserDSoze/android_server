@@ -1,12 +1,31 @@
 #!/bin/sh
 set -eu
 
-BASE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 
 log() { printf '\033[1;32m>> %s\033[0m\n' "$*"; }
 fail() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || fail "Run as root: sudo aserv-update-commands"
+
+# An installed /usr/local/bin wrapper is not the source checkout.
+[ "$#" -le 1 ] || fail "Usage: sudo aserv-update-commands [repository-directory]"
+BASE_DIR="${1:-${ASERV_REPO_DIR:-}}"
+if [ -z "$BASE_DIR" ]; then
+  for _candidate in "$PWD" "$SCRIPT_DIR/.."; do
+    if [ -f "$_candidate/bin/aserv-update-ai" ] && [ -f "$_candidate/modules/opencode.sh" ]; then
+      BASE_DIR="$_candidate"
+      break
+    fi
+  done
+fi
+if [ -z "$BASE_DIR" ] && [ -r /etc/aserv/repository-path ]; then
+  IFS= read -r BASE_DIR < /etc/aserv/repository-path || true
+fi
+if [ -z "$BASE_DIR" ] || [ ! -f "$BASE_DIR/bin/aserv-update-ai" ] || [ ! -f "$BASE_DIR/modules/opencode.sh" ]; then
+  fail "ASERV checkout not found. Run from the repository or pass its directory."
+fi
+BASE_DIR="$(CDPATH= cd -- "$BASE_DIR" && pwd -P)"
 
 log "Synchronizing helper commands"
 for file in "$BASE_DIR"/bin/*; do
@@ -30,4 +49,9 @@ for file in "$BASE_DIR"/openrc/*; do
   install -m 0755 "$file" /usr/local/lib/aserv/openrc/
 done
 
-log "Commands updated. No packages or services were changed."
+# Save the checkout for the updater when launched outside the repository.
+mkdir -p /etc/aserv
+printf '%s\n' "$BASE_DIR" > /etc/aserv/repository-path
+chmod 644 /etc/aserv/repository-path
+
+log "Commands updated from $BASE_DIR. No packages or services were changed."
