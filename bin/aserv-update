@@ -6,7 +6,14 @@ warn() { printf '\n\033[1;33m!! %s\033[0m\n' "$*"; }
 ver()  { command -v "$1" >/dev/null 2>&1 && "$1" "$2" 2>/dev/null | head -1 || printf 'not installed\n'; }
 
 if [ -f /etc/alpine-release ]; then OS_ID=alpine; else OS_ID=debian; fi
-ASERV_REPO_DIR="${ASERV_REPO_DIR:-$PWD}"
+ASERV_REPO_DIR="${ASERV_REPO_DIR:-}"
+if [ -z "$ASERV_REPO_DIR" ] && [ -f "$PWD/modules/opencode.sh" ]; then
+  ASERV_REPO_DIR="$PWD"
+fi
+if [ -z "$ASERV_REPO_DIR" ] && [ -r /etc/aserv/repository-path ]; then
+  IFS= read -r ASERV_REPO_DIR < /etc/aserv/repository-path || true
+fi
+[ -n "$ASERV_REPO_DIR" ] || ASERV_REPO_DIR="$PWD"
 ASERV_SERVICE_DIR="/usr/local/lib/aserv"
 
 if [ -f /etc/default/codex-proxy ]; then . /etc/default/codex-proxy; fi
